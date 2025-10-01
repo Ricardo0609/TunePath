@@ -16,7 +16,7 @@
     "express": "^5.1.0",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
-    "start": "nodemon index.js"
+    "start": "node index.js"
   },
   "description": ""
 }

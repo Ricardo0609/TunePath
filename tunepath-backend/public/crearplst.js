@@ -1,40 +1,58 @@
-// ⚠️ Pega aquí tu access token manual de Spotify
-const access_token = 'BQCZeJs9Q917Cfk6yUnOyg0v0fzvnYUHImOIiiqHyXRE5KeLufEsJ1CXkbTq_fZU5XlNLDzBV_BsKgR4z67U7_Ly4OVtWhmBkV-qi9a-R6lNeNpFZ1CqpvLxztH0Z387_l3kzWPh4E0kzOlT0IqZgMqIs8Y4Aq6bDmNq81f6318rRYCUVhIJ8mQrK_a8TbkGBET4unsTKEz9g1q0nx_tAPDEYQxQHUdvuJF5x-MCmXzms0KiWlX-U1n0IC44IlAHAQUAAKxLQIYMBnpbM3wDGyPJ1rqDl0UABeJ5ti2AXzWEzv-33Aln9MqWp_fff-fo';
+const access_token = 'BQCaXvcY0-uV0n-iQXmowekS-O9B7t4bkAdzRgklm30U0whWErJMoHlG6JblbJIFYzoQpLjs4A7E-Z9VSKNWXYad3u-QBB-uXWRX7tTusS7DRrNZNHnnGHsZOAwSEJs6kRxO2d0clDMUwDyrlRbDChmFwTYCdw0kNYKuBPIK38nzpjpY0SVtOJ68IhbzAjCUxE_K01kviyu8qosCBIrxpBXtUyBISm2yplZD7G9Spe_YVS50FsEimm6EIGjeeUwGCJNhIFtQ1akFunr1DFfVDM-B-MAhg-tg2b1K7vYUTIbHt1ZQ0cyKOVlkSF-JonvH';
 
 const newPlaylistBtn = document.getElementById("newplst");
 const listenPlaylistBtn = document.getElementById("listnspt");
 const cancionesContainer = document.getElementById("cancionesplst");
+const loader = document.getElementById("loader");
 
-let currentPlaylistId = null; // guardamos el ID de la playlist creada
-let currentTrackUris = [];    // canciones random seleccionadas
+let currentPlaylistId = null;
+let currentTrackUris = [];
 
-// 🔥 1. Función para obtener canciones aleatorias
-async function getRandomTracks(limit = 25) {
-  // letra random para buscar canciones
-  const randomLetter = String.fromCharCode(97 + Math.floor(Math.random() * 26));
-
+// 🔥 1. Función para obtener canciones de una banda
+async function getTracksFromArtist(artistId, limit = 5) {
   const response = await fetch(
-    `https://api.spotify.com/v1/search?q=${randomLetter}&type=track&limit=${limit}`,
+    `https://api.spotify.com/v1/artists/${artistId}/top-tracks?market=US`,
     {
       headers: {
         Authorization: `Bearer ${access_token}`
       }
     }
   );
-
   const data = await response.json();
-  return data.tracks.items;
+  return data.tracks.slice(0, limit); // Obtener solo los primeros 'limit'
 }
 
-// 🔥 2. Crear playlist en la cuenta del usuario
+// 🔥 2. Obtener canciones de todas las bandas guardadas (aleatorias)
+async function getTracksFromFavorites() {
+  const favoritos = JSON.parse(localStorage.getItem("favoritos")) || [];
+  let tracks = [];
+
+  for (let artist of favoritos) {
+    const artistTracks = await getTracksFromArtist(artist.id, 20); // más canciones por banda
+    shuffleArray(artistTracks); // mezclamos canciones
+    tracks = tracks.concat(artistTracks.slice(0, 5)); // tomamos canciones aleatorias
+  }
+
+  shuffleArray(tracks); // mezclar todas las canciones
+  return tracks.slice(0, 25); // Limitar a 25 canciones totales
+}
+
+// Función para mezclar un array (Fisher-Yates Shuffle)
+function shuffleArray(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+
+// 🔥 3. Crear playlist en Spotify
 async function createPlaylist(tracks) {
-  // obtener perfil del usuario para saber el user_id
   const userRes = await fetch("https://api.spotify.com/v1/me", {
     headers: { Authorization: `Bearer ${access_token}` }
   });
   const userData = await userRes.json();
 
-  // crear playlist
   const plstRes = await fetch(`https://api.spotify.com/v1/users/${userData.id}/playlists`, {
     method: "POST",
     headers: {
@@ -42,8 +60,8 @@ async function createPlaylist(tracks) {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({
-      name: "My Random Playlist 🎵",
-      description: "La mejor playlist para tu día a día",
+      name: "My Favorites Playlist 🎵",
+      description: "Playlist generada con mis bandas favoritas",
       public: false
     })
   });
@@ -51,7 +69,6 @@ async function createPlaylist(tracks) {
   const plstData = await plstRes.json();
   currentPlaylistId = plstData.id;
 
-  // agregar canciones a la playlist
   await fetch(`https://api.spotify.com/v1/playlists/${currentPlaylistId}/tracks`, {
     method: "POST",
     headers: {
@@ -64,9 +81,9 @@ async function createPlaylist(tracks) {
   });
 }
 
-// 🔥 3. Mostrar canciones en el div
+// 🔥 4. Mostrar canciones
 function renderTracks(tracks) {
-  cancionesContainer.innerHTML = ""; // limpiar antes de mostrar
+  cancionesContainer.innerHTML = "";
   tracks.forEach(track => {
     const songDiv = document.createElement("div");
     songDiv.classList.add("cancion");
@@ -78,34 +95,18 @@ function renderTracks(tracks) {
   });
 }
 
-const loader = document.getElementById("loader");
-
 // 📌 Botón "New playlist"
 newPlaylistBtn.addEventListener("click", async () => {
-  loader.style.display = "block"; // mostrar loader
-
-  const tracks = await getRandomTracks(25);
-  currentTrackUris = tracks;
-
-  // mostrar en pantalla
-  renderTracks(tracks);
-
-  // crear playlist en Spotify
-  await createPlaylist(tracks);
-
-  loader.style.display = "none"; // ocultar loader
-});
-
-// 📌 También en carga inicial (si lo tienes activado con DOMContentLoaded)
-window.addEventListener("DOMContentLoaded", async () => {
   loader.style.display = "block";
-  const tracks = await getRandomTracks(25);
+
+  const tracks = await getTracksFromFavorites();
   currentTrackUris = tracks;
+
   renderTracks(tracks);
   await createPlaylist(tracks);
+
   loader.style.display = "none";
 });
-
 
 // 📌 Botón "Listen playlist"
 listenPlaylistBtn.addEventListener("click", () => {
@@ -116,16 +117,15 @@ listenPlaylistBtn.addEventListener("click", () => {
   }
 });
 
-// 🔥 4. Función central para generar playlist
-async function generatePlaylist() {
-  const tracks = await getRandomTracks(25);
+// 🚀 Generar playlist automáticamente al cargar la página
+window.onload = async () => {
+  loader.style.display = "block";
+
+  const tracks = await getTracksFromFavorites();
   currentTrackUris = tracks;
+
   renderTracks(tracks);
   await createPlaylist(tracks);
-}
 
-// 🚀 Crear playlist automáticamente al cargar la página
-window.onload = async () => {
-  await generatePlaylist();
+  loader.style.display = "none";
 };
-

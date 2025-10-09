@@ -1,7 +1,7 @@
 // -----------------------
 // TunePath - Playlist aleatoria por bloques de artistas + "Surprise mode"
 // -----------------------
-const access_token = 'BQAOQJ_d9ifRucKmjgL45uvL8RicH11OX4TqQ1gGHAFugNIWgnWI9I2p3TW11G0plzOt3EuCNH5d7jAFuYxr8b8rmnfYCgCQLN-QBl6jHjWJjF7MUFvyuZt7INbIIqZXi7Kz76QQLTXBAi5kBizDFZumVA4pNskr6YXuwDE9maMFSVvKPFRXtblj78-oZ1NatUbS8UkIBB3im61jkUP6vW3uJcdNm5_lbu-pTlqu9tMslcH0f91R-j2vMtEXDBOcyO_Le8q5kmWDZdNmU2rUaeQDzjSo2evrsA1XUHuOpEpAO3d4p8AZl3wO9pfskcWu'; // <-- pega tu token válido aquí
+const access_token = 'BQDSxyQc9pOObo2h6xlxWnIibtPSDzCnSF9vwCHazePlUP1NE61ZcutP_3oFoM6ly7BUKiFVPKOOkg-0Zdt8VZVOslWx-xO2gYGr-d-grYV90kkFkeqvI7plnSZGWf9HmKnwHSmTORAL1TIZn6ezhBwYvizYMLH917jy8HFFDWi5q3_5VBi4ogj6hlJqZ2CA3eolY1Y4RaLZK-3VrF0Nn2Olt7wkx0WVv3dlj6Q6JhBMM6PICmJGpU5fcEm6QBTd9yKQBimAnmM1bkxVV43N3na6mnp3TYy1qq69c93seyJL7N2or1JMRzYPMDBaP-C1'; // <-- pega tu token válido aquí
 
 const newPlaylistBtn = document.getElementById("newplst");
 const listenPlaylistBtn = document.getElementById("listnspt");
@@ -86,15 +86,18 @@ async function getTracksGroupedByArtists(totalSongsRequested = 25, perArtist = s
   for (const artist of chosenArtists) {
     const artistTracks = await getRandomTracksByArtist(artist.name, artist.id, 50);
     finalTracks.push(...artistTracks.slice(0, perArtist));
-    if (finalTracks.length >= totalSongsRequested) break;
+    // ❌ Quitar esta línea para no cortar antes de tiempo
+    // if (finalTracks.length >= totalSongsRequested) break;
   }
 
+  // ⚡ Recortar al final para asegurar cantidad exacta
   if (finalTracks.length > totalSongsRequested) {
     finalTracks = finalTracks.slice(0, totalSongsRequested);
   }
 
   return finalTracks;
 }
+
 
 // -----------------------
 // Obtener canciones sorpresa (recomendaciones)

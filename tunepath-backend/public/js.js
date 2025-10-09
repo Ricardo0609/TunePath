@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const btnLogin = document.getElementById("btnlogin");
   if (btnLogin) {
     btnLogin.addEventListener("click", () => {
-      window.location.href = "/login";
+      window.location.href = "/logIn.html";
     });
   }
 
@@ -40,3 +40,4 @@ ajustBtn.addEventListener("click", () => {
 cancelarBtn.addEventListener("click", () => {
   ajustesOverlay.style.display = "none";
 });
+

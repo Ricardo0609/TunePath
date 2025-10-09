@@ -24,3 +24,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 });
+
+const ajustbtn = document.getElementById("ajustbtn");
+
+const ajustBtn = document.getElementById("ajustbtn");
+const ajustesOverlay = document.getElementById("ajustesOverlay");
+const cancelarBtn = document.getElementById("cancelar");
+
+// Abrir ajustes
+ajustBtn.addEventListener("click", () => {
+  ajustesOverlay.style.display = "flex";
+});
+
+// Cerrar ajustes
+cancelarBtn.addEventListener("click", () => {
+  ajustesOverlay.style.display = "none";
+});

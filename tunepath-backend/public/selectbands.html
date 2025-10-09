@@ -1,241 +1,58 @@
-// ⚡ Este archivo maneja el buscador de bandas en selectbands.html
-
-// ⚠️ IMPORTANTE: necesitas pasar el access_token que obtuviste al loguearte con Spotify.
-// De momento puedes ponerlo a mano para probar, pero después lo vamos a manejar bien con OAuth.
-const access_token = 'BQAOQJ_d9ifRucKmjgL45uvL8RicH11OX4TqQ1gGHAFugNIWgnWI9I2p3TW11G0plzOt3EuCNH5d7jAFuYxr8b8rmnfYCgCQLN-QBl6jHjWJjF7MUFvyuZt7INbIIqZXi7Kz76QQLTXBAi5kBizDFZumVA4pNskr6YXuwDE9maMFSVvKPFRXtblj78-oZ1NatUbS8UkIBB3im61jkUP6vW3uJcdNm5_lbu-pTlqu9tMslcH0f91R-j2vMtEXDBOcyO_Le8q5kmWDZdNmU2rUaeQDzjSo2evrsA1XUHuOpEpAO3d4p8AZl3wO9pfskcWu';  
-
-// Función para buscar artistas en la API de Spotify
-async function searchArtist(query) {
-  const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=5`, {
-    headers: {
-      Authorization: `Bearer ${access_token}`
-    }
-  });
-  const data = await response.json();
-  return data.artists.items; // devuelve la lista de artistas
-}
-
-// Función para mostrar artistas en el contenedor #bands
-function displayArtists(artists) {
-  const container = document.getElementById("bands");
-  container.innerHTML = ""; // limpiar antes de mostrar
-
-  artists.forEach(artist => {
-    const imgUrl = artist.images[0] ? artist.images[0].url : "https://via.placeholder.com/150";
-
-    const artistDiv = document.createElement("div");
-    artistDiv.classList.add("artist-card");
-    artistDiv.innerHTML = `
-      <img src="${imgUrl}" alt="${artist.name}" width="100" height="100" style="border-radius:50%">
-      <p style="color:white;">${artist.name}</p>
-    `;
-    container.appendChild(artistDiv);
-  });
-}
-
-// Evento al escribir en el input
-document.getElementById("buscbands").addEventListener("keyup", async (e) => {
-  const query = e.target.value.trim();
-  if (query.length > 2) { // solo buscar si hay al menos 3 letras
-    const artists = await searchArtist(query);
-    displayArtists(artists);
-  } else {
-    document.getElementById("bands").innerHTML = "";
-  }
-});
-
-
-
-
-
-
-// Recuperar favoritos desde localStorage al cargar
-let favoritos = JSON.parse(localStorage.getItem("favoritos")) || [];
+<!DOCTYPE html>
+<html lang="en">
 
-// Función para buscar artistas en la API de Spotify
-async function searchArtist(query) {
-  const response = await fetch(
-    `https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=5`,
-    {
-      headers: {
-        Authorization: `Bearer ${access_token}`
-      }
-    }
-  );
-  const data = await response.json();
-  return data.artists.items; // devuelve la lista de artistas
-}
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select Bands</title>
+    <link rel="icon" href="tunepathlogo.png">
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.1/font/bootstrap-icons.min.css">
 
-// Función para mostrar artistas en el contenedor #bands
-function displayArtists(artists) {
-  const container = document.getElementById("bands");
-  container.innerHTML = ""; // limpiar antes de mostrar
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700&display=swap" rel="stylesheet">
 
-  artists.forEach(artist => {
-    const imgUrl = artist.images[0] ? artist.images[0].url : "https://via.placeholder.com/150";
 
-    const artistDiv = document.createElement("div");
-    artistDiv.classList.add("artist-card");
-    artistDiv.innerHTML = `
-      <img src="${imgUrl}" alt="${artist.name}" width="100" height="100" style="border-radius:50%">
-      <p style="color:white;">${artist.name}</p>
-    `;
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&display=swap" rel="stylesheet">
 
-    // Al hacer click, añadir a favoritos
-    artistDiv.addEventListener("click", () => addToFavorites(artist));
+</head>
 
-    container.appendChild(artistDiv);
-  });
-}
+<body>
 
-// Función para mostrar favoritos en el div#bandsfavsmias
-function renderFavorites() {
-  const favContainer = document.getElementById("bandsfavsmias");
-  favContainer.innerHTML = "";
+    
 
-  favoritos.forEach(artist => {
-    const favDiv = document.createElement("div");
-    favDiv.classList.add("fav-artist");
-    favDiv.innerHTML = `
-      <img src="${artist.imgUrl}" alt="${artist.name}" width="80" height="80" style="border-radius:50%">
-      <p style="color:white;">${artist.name}</p>
-    `;
-    favContainer.appendChild(favDiv);
-  });
-}
+    <div class="bandsdiv">
+        <div class="buscador">
+            <input id="buscbands" type="text" placeholder="Search">
+            <svg xmlns="http://www.w3.org/2000/svg" width="7vw" height="7vw" fill="white" class="bi bi-search"
+                viewBox="0 0 16 16">
+                <path
+                    d="M11.742 10.344a6.5 6.5 0 1 0-1.397 1.398h-.001q.044.06.098.115l3.85 3.85a1 1 0 0 0 1.415-1.414l-3.85-3.85a1 1 0 0 0-.115-.1zM12 6.5a5.5 5.5 0 1 1-11 0 5.5 5.5 0 0 1 11 0" />
+            </svg>
+        </div>
 
-// Función para añadir a favoritos (sin duplicados)
-function addToFavorites(artist) {
-  const imgUrl = artist.images[0] ? artist.images[0].url : "https://via.placeholder.com/150";
+<h3 class="titarr">Select your favorite bands</h3>
+        <div id="bands" class="cajaprba">
+           
 
-  // Verificar si ya está en favoritos
-  const exists = favoritos.some(fav => fav.id === artist.id);
-  if (!exists) {
-    favoritos.push({
-      id: artist.id,
-      name: artist.name,
-      imgUrl: imgUrl
-    });
+        </div>
 
-    // Guardar en localStorage
-    localStorage.setItem("favoritos", JSON.stringify(favoritos));
 
-    // Renderizar de nuevo
-    renderFavorites();
-  }
-}
+        <h3 class="titarr">Your bands</h3>
+        <div  id="bandsfavsmias" class="scrolear">
 
-// Evento al escribir en el input
-document.getElementById("buscbands").addEventListener("keyup", async (e) => {
-  const query = e.target.value.trim();
-  if (query.length > 2) { // solo buscar si hay al menos 3 letras
-    const artists = await searchArtist(query);
-    displayArtists(artists);
-  } else {
-    document.getElementById("bands").innerHTML = "";
-  }
-});
+    </div>
 
-// Mostrar favoritos al cargar la página
-renderFavorites();
 
 
+ 
+    <a href="index.html"> <div class="boton verde">Guardar</div></a>   
+    </div>
+</body>
+<script src="js.js"></script>
+<script src="selectbands.js"></script>
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*// ⚡ Este archivo maneja el buscador de bandas en selectbands.html
-
-// ⚠️ IMPORTANTE: necesitas pasar el access_token que obtuviste al loguearte con Spotify.
-// De momento puedes ponerlo a mano para probar, pero después lo vamos a manejar bien con OAuth.
-// 🔑 Función para extraer el token del hash de la URL
-function getAccessTokenFromUrl() {
-  const hash = window.location.hash.substring(1);
-  const params = new URLSearchParams(hash);
-  return params.get("access_token");
-}
-
-// Si el token viene en la URL después del login
-const tokenFromUrl = getAccessTokenFromUrl();
-if (tokenFromUrl) {
-  localStorage.setItem("spotify_access_token", tokenFromUrl);
-  // Limpiar el hash de la URL para que se vea más limpio
-  window.history.replaceState({}, document.title, "/selectbands.html");
-}
-
-// Recuperar el token guardado
-const access_token = localStorage.getItem("spotify_access_token");
-
-
-
-
-
-
-
-// Función para buscar artistas en la API de Spotify
-async function searchArtist(query) {
-  const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=5`, {
-    headers: {
-      Authorization: `Bearer ${access_token}`
-    }
-  });
-  const data = await response.json();
-
-  if (data.error) {
-    console.error("Error con el token:", data.error);
-    alert("Tu sesión expiró, vuelve a iniciar sesión con Spotify.");
-    localStorage.removeItem("spotify_access_token");
-    window.location.href = "login.html"; // te regresa al login
-    return [];
-  }
-
-  return data.artists.items;
-}
-
-
-// Función para mostrar artistas en el contenedor #bands
-function displayArtists(artists) {
-  const container = document.getElementById("bands");
-  container.innerHTML = ""; // limpiar antes de mostrar
-
-  artists.forEach(artist => {
-    const imgUrl = artist.images[0] ? artist.images[0].url : "https://via.placeholder.com/150";
-
-    const artistDiv = document.createElement("div");
-    artistDiv.classList.add("artist-card");
-    artistDiv.innerHTML = `
-      <img src="${imgUrl}" alt="${artist.name}" width="100" height="100" style="border-radius:50%">
-      <p style="color:white;">${artist.name}</p>
-    `;
-    container.appendChild(artistDiv);
-  });
-}
-
-// Evento al escribir en el input
-document.getElementById("buscbands").addEventListener("keyup", async (e) => {
-  const query = e.target.value.trim();
-  if (query.length > 2) { // solo buscar si hay al menos 3 letras
-    const artists = await searchArtist(query);
-    displayArtists(artists);
-  } else {
-    document.getElementById("bands").innerHTML = "";
-  }
-});
-*/
+</html>

@@ -41,3 +41,12 @@ cancelarBtn.addEventListener("click", () => {
   ajustesOverlay.style.display = "none";
 });
 
+const logoutBtn = document.getElementById("logoutbtn");
+
+logoutBtn.addEventListener("click", () => {
+  localStorage.removeItem("spotify_access_token");
+  alert("Sesión cerrada correctamente.");
+  window.location.href = "LogIn.html"; // cambia si tu página principal tiene otro nombre
+});
+
+

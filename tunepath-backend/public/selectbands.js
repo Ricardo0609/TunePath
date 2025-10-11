@@ -2,7 +2,7 @@
 
 // ⚠️ IMPORTANTE: necesitas pasar el access_token que obtuviste al loguearte con Spotify.
 // De momento puedes ponerlo a mano para probar, pero después lo vamos a manejar bien con OAuth.
-const access_token ='BQDiOpCxhiGWDhyZ5MuFzFK_PzJhHQg50D1euAP2sWTRlZHrE8OzRxWtzXIJT7KmL-y1sNnMBXrmQ6vu_1-nVgEnq-EL8j4VQctdila56UEjboEHi48642CUpXjNtcvTBSQgaDE5aLJHqGUZSeP_-pDE8C5oJ1FLBGfDdpGbrySBiG3IrbzL6_Obr3ARHPvhgydPa6Rd6-MOfaulJiCRbGr9FLp4JlyzH-xVMJtcqu1u6a-naHuh7fc0_jpyhWiYbDP78c3_8Un29qXw8BLB_Dn_U5vzdY0HyTDQ8OTaMub0RfqgujfvMYspkI4exiTQ';  
+const access_token ='BQCFoYAr2_eyXuBJ_8Zim4Q1LTc5Cvv4XFj7w6nySulCsFANbYrkB_kDZoKzfzgZ-SIZ8yPuHSSb90uxQQBaLy90xcHbaIexhX3hczszBAt5Z8hCv4oINe43KK1RZPaMfiX5oqREiEk-4Lh4u2bAQ5bVhEK06dDH66GidJEsT0RLyucOqwaeX6k7yAZZtx9WmCHz52nw-HDYE9nyqtykriddrgLqIzR8qoZA85-q1fhK2VPANk4lZPW3z1lAiHW29llsTWqte9PblbDwVrA1vpw5E0LgRqUgkqyadoG2W6HZ0EXXRBx9_n7QfglUobUt';  
 
 // Función para buscar artistas en la API de Spotify
 async function searchArtist(query) {
@@ -239,5 +239,6 @@ document.getElementById("buscbands").addEventListener("keyup", async (e) => {
   }
 });
 */
+
 
 

@@ -1,8 +1,7 @@
 // -----------------------
-// TunePath - Playlist aleatoria por bloques de artistas + "Surprise mode"
+// TunePath - Playlist aleatoria + Surprise Mode
 // -----------------------
-const access_token = 'BQCFoYAr2_eyXuBJ_8Zim4Q1LTc5Cvv4XFj7w6nySulCsFANbYrkB_kDZoKzfzgZ-SIZ8yPuHSSb90uxQQBaLy90xcHbaIexhX3hczszBAt5Z8hCv4oINe43KK1RZPaMfiX5oqREiEk-4Lh4u2bAQ5bVhEK06dDH66GidJEsT0RLyucOqwaeX6k7yAZZtx9WmCHz52nw-HDYE9nyqtykriddrgLqIzR8qoZA85-q1fhK2VPANk4lZPW3z1lAiHW29llsTWqte9PblbDwVrA1vpw5E0LgRqUgkqyadoG2W6HZ0EXXRBx9_n7QfglUobUt'
-; // <-- pega tu token válido aquí
+const access_token = 'BQC_-qYuuv7M93SgUluVbkoH92LsKk5F9sHQae94XbnqNio1k5ySLM9DjpNwWIPSzefSk6ENi_HtcPwLL3dmoXICfb9FXNTqFQEuDBoLSuMNi4tTHvY4Nzd8pPIfbMK6sLZciYVdR0JGWS4uioiVa__8g-W76sost1455MJIhb2x3WGUvrpQ7zxDxi9gvbv0H_L9tQI1S4OW0rflJIp78s98FZTkXNFRLXIKzEMiIzebwrsi5XPp3dCdk685BE5pD0R0ccGoPSOsoiXv72xm3rE_0WiM6kKR7xYXdeDnMlfcDHcw56Gzy2L4SpvS7btc';
 
 const newPlaylistBtn = document.getElementById("newplst");
 const listenPlaylistBtn = document.getElementById("listnspt");
@@ -10,7 +9,7 @@ const cancionesContainer = document.getElementById("cancionesplst");
 const loader = document.getElementById("loader");
 const guardarBtn = document.getElementById("guardar");
 const numCancionesInput = document.getElementById("numdcanc");
-const surpriseBtn = document.getElementById("suprsbtn"); // nuevo botón
+const surpriseBtn = document.getElementById("suprsbtn");
 
 let currentPlaylistId = null;
 let totalSongs = 25;
@@ -87,18 +86,11 @@ async function getTracksGroupedByArtists(totalSongsRequested = 25, perArtist = s
   for (const artist of chosenArtists) {
     const artistTracks = await getRandomTracksByArtist(artist.name, artist.id, 50);
     finalTracks.push(...artistTracks.slice(0, perArtist));
-    // ❌ Quitar esta línea para no cortar antes de tiempo
-    // if (finalTracks.length >= totalSongsRequested) break;
+    if (finalTracks.length >= totalSongsRequested) break;
   }
 
-  // ⚡ Recortar al final para asegurar cantidad exacta
-  if (finalTracks.length > totalSongsRequested) {
-    finalTracks = finalTracks.slice(0, totalSongsRequested);
-  }
-
-  return finalTracks;
+  return finalTracks.slice(0, totalSongsRequested);
 }
-
 
 // -----------------------
 // Obtener canciones sorpresa (recomendaciones)
@@ -110,7 +102,10 @@ async function getRecommendedTracks(artistIds, limit = 5) {
       return [];
     }
 
-    const validIds = artistIds.slice(0, 5).join(","); // máximo 5 permitidos
+    const validIds = artistIds
+      .filter(id => typeof id === "string" && id.trim() !== "")
+      .slice(0, 5)
+      .join(",");
 
     const res = await fetch(
       `https://api.spotify.com/v1/recommendations?limit=${limit}&seed_artists=${validIds}`,
@@ -129,7 +124,6 @@ async function getRecommendedTracks(artistIds, limit = 5) {
     return [];
   }
 }
-
 
 // -----------------------
 // Crear playlist en Spotify
@@ -211,41 +205,73 @@ async function generatePlaylist(cantidad = 25) {
 // -----------------------
 // Eventos
 // -----------------------
-newPlaylistBtn.addEventListener("click", async () => {
-  await generatePlaylist(totalSongs);
-});
+if (newPlaylistBtn) {
+  newPlaylistBtn.addEventListener("click", async () => {
+    await generatePlaylist(totalSongs);
+  });
+}
 
-listenPlaylistBtn.addEventListener("click", async () => {
-  if (!generatedTracks.length) {
-    alert("Primero genera la playlist con 'New playlist'.");
-    return;
-  }
-  await createPlaylist(generatedTracks);
-  if (currentPlaylistId)
-    window.open(`https://open.spotify.com/playlist/${currentPlaylistId}`, "_blank");
-});
+if (listenPlaylistBtn) {
+  listenPlaylistBtn.addEventListener("click", async () => {
+    if (!generatedTracks.length) {
+      alert("Primero genera la playlist con 'New playlist'.");
+      return;
+    }
+    await createPlaylist(generatedTracks);
+    if (currentPlaylistId)
+      window.open(`https://open.spotify.com/playlist/${currentPlaylistId}`, "_blank");
+  });
+}
 
-guardarBtn.addEventListener("click", async () => {
-  const valorInput = parseInt(numCancionesInput.value);
-  if (!isNaN(valorInput) && valorInput > 0) totalSongs = valorInput;
-  else totalSongs = 25;
-  document.getElementById("ajustesOverlay").style.display = "none";
-  await generatePlaylist(totalSongs);
-});
+if (guardarBtn) {
+  guardarBtn.addEventListener("click", async () => {
+    const valorInput = parseInt(numCancionesInput.value);
+    totalSongs = !isNaN(valorInput) && valorInput > 0 ? valorInput : 25;
+    document.getElementById("ajustesOverlay").style.display = "none";
+    await generatePlaylist(totalSongs);
+  });
+}
 
 // ---- NUEVO: Surprise mode ----
-surpriseBtn.addEventListener("click", async () => {
-  const recs = await getRecommendedTracks(5);
-  if (recs.length) {
-    generatedTracks.push(...recs);
-    renderTracks(generatedTracks);
-  } else {
-    alert("No se pudieron obtener canciones recomendadas.");
-  }
-});
+if (surpriseBtn) {
+  surpriseBtn.addEventListener("click", async () => {
+    try {
+      const favorites = getSavedFavorites();
+      if (!favorites.length) {
+        alert("No tienes artistas favoritos guardados.");
+        console.error("No hay artistas para recomendaciones");
+        return;
+      }
 
+      const artistIds = favorites
+        .map(a => a.id)
+        .filter(id => typeof id === "string" && id.trim() !== "");
+
+      if (!artistIds.length) {
+        alert("No hay artistas válidos para recomendaciones.");
+        return;
+      }
+
+      const recs = await getRecommendedTracks(artistIds, 5);
+      if (recs.length > 0) {
+        generatedTracks.push(...recs);
+        renderTracks(generatedTracks);
+        surpriseBtn.classList.add("btnprsionado");
+      } else {
+        surpriseBtn.classList.remove("btnprsionado");
+        alert("No se pudieron obtener canciones recomendadas.");
+      }
+    } catch (err) {
+      console.error("Error en Surprise Mode:", err);
+      alert("Ocurrió un error al intentar obtener las recomendaciones.");
+    }
+  });
+}
+
+// -----------------------
+// Autogenerar al cargar
+// -----------------------
 window.addEventListener("load", async () => {
   await generatePlaylist(totalSongs);
 });
-
 

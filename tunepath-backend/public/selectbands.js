@@ -2,7 +2,7 @@
 
 // ⚠️ IMPORTANTE: necesitas pasar el access_token que obtuviste al loguearte con Spotify.
 // De momento puedes ponerlo a mano para probar, pero después lo vamos a manejar bien con OAuth.
-const access_token ='BQCFoYAr2_eyXuBJ_8Zim4Q1LTc5Cvv4XFj7w6nySulCsFANbYrkB_kDZoKzfzgZ-SIZ8yPuHSSb90uxQQBaLy90xcHbaIexhX3hczszBAt5Z8hCv4oINe43KK1RZPaMfiX5oqREiEk-4Lh4u2bAQ5bVhEK06dDH66GidJEsT0RLyucOqwaeX6k7yAZZtx9WmCHz52nw-HDYE9nyqtykriddrgLqIzR8qoZA85-q1fhK2VPANk4lZPW3z1lAiHW29llsTWqte9PblbDwVrA1vpw5E0LgRqUgkqyadoG2W6HZ0EXXRBx9_n7QfglUobUt';  
+const access_token ='BQC_-qYuuv7M93SgUluVbkoH92LsKk5F9sHQae94XbnqNio1k5ySLM9DjpNwWIPSzefSk6ENi_HtcPwLL3dmoXICfb9FXNTqFQEuDBoLSuMNi4tTHvY4Nzd8pPIfbMK6sLZciYVdR0JGWS4uioiVa__8g-W76sost1455MJIhb2x3WGUvrpQ7zxDxi9gvbv0H_L9tQI1S4OW0rflJIp78s98FZTkXNFRLXIKzEMiIzebwrsi5XPp3dCdk685BE5pD0R0ccGoPSOsoiXv72xm3rE_0WiM6kKR7xYXdeDnMlfcDHcw56Gzy2L4SpvS7btc';  
 
 // Función para buscar artistas en la API de Spotify
 async function searchArtist(query) {
@@ -138,107 +138,3 @@ document.getElementById("buscbands").addEventListener("keyup", async (e) => {
 
 // Mostrar favoritos al cargar la página
 renderFavorites();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*// ⚡ Este archivo maneja el buscador de bandas en selectbands.html
-
-// ⚠️ IMPORTANTE: necesitas pasar el access_token que obtuviste al loguearte con Spotify.
-// De momento puedes ponerlo a mano para probar, pero después lo vamos a manejar bien con OAuth.
-// 🔑 Función para extraer el token del hash de la URL
-function getAccessTokenFromUrl() {
-  const hash = window.location.hash.substring(1);
-  const params = new URLSearchParams(hash);
-  return params.get("access_token");
-}
-
-// Si el token viene en la URL después del login
-const tokenFromUrl = getAccessTokenFromUrl();
-if (tokenFromUrl) {
-  localStorage.setItem("spotify_access_token", tokenFromUrl);
-  // Limpiar el hash de la URL para que se vea más limpio
-  window.history.replaceState({}, document.title, "/selectbands.html");
-}
-
-// Recuperar el token guardado
-const access_token = localStorage.getItem("spotify_access_token");
-
-
-
-
-
-
-
-// Función para buscar artistas en la API de Spotify
-async function searchArtist(query) {
-  const response = await fetch(`https://api.spotify.com/v1/search?q=${encodeURIComponent(query)}&type=artist&limit=5`, {
-    headers: {
-      Authorization: `Bearer ${access_token}`
-    }
-  });
-  const data = await response.json();
-
-  if (data.error) {
-    console.error("Error con el token:", data.error);
-    alert("Tu sesión expiró, vuelve a iniciar sesión con Spotify.");
-    localStorage.removeItem("spotify_access_token");
-    window.location.href = "login.html"; // te regresa al login
-    return [];
-  }
-
-  return data.artists.items;
-}
-
-
-// Función para mostrar artistas en el contenedor #bands
-function displayArtists(artists) {
-  const container = document.getElementById("bands");
-  container.innerHTML = ""; // limpiar antes de mostrar
-
-  artists.forEach(artist => {
-    const imgUrl = artist.images[0] ? artist.images[0].url : "https://via.placeholder.com/150";
-
-    const artistDiv = document.createElement("div");
-    artistDiv.classList.add("artist-card");
-    artistDiv.innerHTML = `
-      <img src="${imgUrl}" alt="${artist.name}" width="100" height="100" style="border-radius:50%">
-      <p style="color:white;">${artist.name}</p>
-    `;
-    container.appendChild(artistDiv);
-  });
-}
-
-// Evento al escribir en el input
-document.getElementById("buscbands").addEventListener("keyup", async (e) => {
-  const query = e.target.value.trim();
-  if (query.length > 2) { // solo buscar si hay al menos 3 letras
-    const artists = await searchArtist(query);
-    displayArtists(artists);
-  } else {
-    document.getElementById("bands").innerHTML = "";
-  }
-});
-*/
-
-
-

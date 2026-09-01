@@ -5,16 +5,16 @@
 ═══════════════════════════════════════════════ */
 
 :root {
-  --bg:         #090909;
-  --surface:    #111111;
-  --surface-2:  #191919;
-  --surface-3:  #242424;
+  --bg:         #14111B;
+  --surface:    #1C1721;
+  --surface-2:  #231D2A;
+  --surface-3:  #2D2636;
   --border:     rgba(255,255,255,0.07);
   --border-2:   rgba(255,255,255,0.13);
 
-  --accent:     #beff00;
-  --accent-dim: rgba(190,255,0,0.1);
-  --accent-glow:rgba(190,255,0,0.2);
+  --accent:     #8C3EE2;  
+  --accent-dim: rgba(140,62,226,0.1);
+  --accent-glow:rgba(140,62,226,0.2);
   --spotify:    #1db954;
   --red:        #ff3b5c;
   --blue:       #4f94ff;

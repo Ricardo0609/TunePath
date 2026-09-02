@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout } from '../utils/auth';
 import {
   getMe,
   buildMix,
   getDiscoverTracks,
-  getArtistTracks,
+  getArtistCatalog,
   createSpotifyPlaylist,
   generatePlaylistName,
   pickRandom,
@@ -29,15 +29,17 @@ export default function Main() {
   const navigate = useNavigate();
 
   const [user, setUser] = useState(() => readJSON('ws_user', null));
-  const [artists] = useState(() => readJSON('ws_artists', []));
-  const [activeIds, setActiveIds] = useState(() => artists.map(a => a.id));
+  const [artists, setArtists] = useState(() => readJSON('ws_artists', []));
+  const [activeIds, setActiveIds] = useState(() =>
+    readJSON('ws_artists', []).map(a => a.id)
+  );
 
   const [mode, setMode] = useState('mix'); // 'mix' | 'artist'
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [songsPerArtist, setSongsPerArtist] = useState(3);
-  const [totalSongs, setTotalSongs] = useState(20);
-  const [vibe, setVibe] = useState(null);
+  const [songsPerArtist, setSongsPerArtist] = useState(5);
+  const [totalSongs, setTotalSongs] = useState(30);
+  const [vibe, setVibe] = useState('balanced');
 
   const [mixTracks, setMixTracks] = useState([]);
   const [playlistName, setPlaylistName] = useState('');
@@ -50,14 +52,18 @@ export default function Main() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Redirect if there's no artist pool yet
-  useEffect(() => {
-    if (!artists.length) {
-      navigate('/select', { replace: true });
-    }
-  }, [artists, navigate]);
+  const didInit = useRef(false);
 
-  // Load the current user once
+  // Sin artistas no hay nada que mostrar
+  useEffect(() => {
+    if (!artists.length) navigate('/select', { replace: true });
+  }, [artists.length, navigate]);
+
+  // Persistir artistas cada vez que cambien (agregar/quitar)
+  useEffect(() => {
+    if (artists.length) localStorage.setItem('ws_artists', JSON.stringify(artists));
+  }, [artists]);
+
   useEffect(() => {
     getMe()
       .then(u => {
@@ -74,60 +80,84 @@ export default function Main() {
     setTimeout(() => setToast(null), 3200);
   };
 
-  const generateMix = useCallback(async (opts = {}) => {
-    const pool = opts.artists || activeArtists;
-    if (!pool.length) return;
-    setMixLoading(true);
-    try {
-      const tracks = await buildMix(pool, {
-        songsPerArtist: opts.songsPerArtist ?? songsPerArtist,
-        totalSongs: opts.totalSongs ?? totalSongs,
-        vibe: opts.vibe !== undefined ? opts.vibe : vibe,
-      });
-      setMixTracks(tracks);
-      setPlaylistName(prev => prev || generatePlaylistName(pool));
-    } catch (err) {
-      showToast(err.message || 'Could not build the mix', 'error');
-    } finally {
-      setMixLoading(false);
-    }
-  }, [activeArtists, songsPerArtist, totalSongs, vibe]); // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Mix ──────────────────────────────────────
+
+  const generateMix = useCallback(
+    async (overrides = {}) => {
+      const pool = overrides.artists || artists.filter(a => activeIds.includes(a.id));
+      if (!pool.length) {
+        setMixTracks([]);
+        return;
+      }
+      setMixLoading(true);
+      try {
+        const tracks = await buildMix(pool, {
+          songsPerArtist: overrides.songsPerArtist ?? songsPerArtist,
+          totalSongs: overrides.totalSongs ?? totalSongs,
+          vibe: overrides.vibe !== undefined ? overrides.vibe : vibe,
+        });
+        setMixTracks(tracks);
+        setPlaylistName(prev => prev || generatePlaylistName(pool));
+      } catch (err) {
+        showToast(err.message || 'No se pudo armar el mix', 'error');
+      } finally {
+        setMixLoading(false);
+      }
+    },
+    [artists, activeIds, songsPerArtist, totalSongs, vibe]
+  );
+
+  /** NEW MIX — regenera desde cero, con nombre nuevo */
+  const handleNewMix = useCallback(() => {
+    const pool = artists.filter(a => activeIds.includes(a.id));
+    setPlaylistName(pool.length ? generatePlaylistName(pool) : '');
+    generateMix({ artists: pool });
+  }, [artists, activeIds, generateMix]);
+
+  // ── Discover ─────────────────────────────────
 
   const loadDiscover = useCallback(async () => {
-    if (!activeArtists.length) return;
+    const pool = artists.filter(a => activeIds.includes(a.id));
+    if (!pool.length) return;
     setDiscoverLoading(true);
     try {
-      const tracks = await getDiscoverTracks(activeArtists, 8);
-      setDiscoverTracks(tracks);
+      setDiscoverTracks(await getDiscoverTracks(pool, 8));
     } catch {
       setDiscoverTracks([]);
     } finally {
       setDiscoverLoading(false);
     }
-  }, [activeArtists]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [artists, activeIds]);
 
-  // Initial mix + discover once artists are ready
+  // Carga inicial (una sola vez)
   useEffect(() => {
-    if (artists.length) {
+    if (artists.length && !didInit.current) {
+      didInit.current = true;
       generateMix();
       loadDiscover();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [artists.length]);
+  }, [artists.length, generateMix, loadDiscover]);
+
+  // ── Acciones sobre tracks ────────────────────
 
   async function handleReplaceTrack(index) {
-    if (!activeArtists.length) return;
-    const randomArtist = pickRandom(activeArtists, 1)[0];
+    const pool = artists.filter(a => activeIds.includes(a.id));
+    if (!pool.length) return;
+    const randomArtist = pickRandom(pool, 1)[0];
     try {
-      const tracks = await getArtistTracks(randomArtist, { vibeId: vibe });
+      const catalog = await getArtistCatalog(randomArtist);
       const existingIds = new Set(mixTracks.map(t => t.id));
-      const candidates = tracks.filter(t => !existingIds.has(t.id));
+      const candidates = catalog.filter(t => !existingIds.has(t.id));
       if (!candidates.length) return;
       const [newTrack] = pickRandom(candidates, 1);
       setMixTracks(prev => prev.map((t, i) => (i === index ? newTrack : t)));
     } catch {
-      showToast('Could not replace that track', 'error');
+      showToast('No se pudo cambiar esa canción', 'error');
     }
+  }
+
+  function handleRemoveTrack(index) {
+    setMixTracks(prev => prev.filter((_, i) => i !== index));
   }
 
   function handleAddDiscoverTrack(track) {
@@ -135,27 +165,47 @@ export default function Main() {
     setDiscoverTracks(prev => prev.filter(t => t.id !== track.id));
   }
 
-  async function handleSaveToSpotify() {
-    if (!user || !mixTracks.length) return;
+  // ── Guardar ──────────────────────────────────
+
+  async function saveTracks(tracks, name) {
+    if (!tracks.length) return;
     setSaving(true);
     try {
-      const playlist = await createSpotifyPlaylist(mixTracks, playlistName);
+      const playlist = await createSpotifyPlaylist(tracks, name);
       const entry = {
         id: playlist.id,
         name: playlist.name,
         url: playlist.external_urls?.spotify,
         date: new Date().toISOString(),
-        trackCount: mixTracks.length,
+        trackCount: tracks.length,
       };
       const nextHistory = [entry, ...history].slice(0, MAX_HISTORY);
       setHistory(nextHistory);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
-      showToast('Playlist saved to Spotify 🎉');
+      showToast('Playlist guardada en Spotify 🎉');
     } catch (err) {
-      showToast(err.message || 'Could not save the playlist', 'error');
+      showToast(err.message || 'No se pudo guardar la playlist', 'error');
     } finally {
       setSaving(false);
     }
+  }
+
+  // ── Artistas ─────────────────────────────────
+
+  /** Agregar un artista nuevo desde el buscador de la vista Artist */
+  function handleAddArtist(artist) {
+    if (artists.some(a => a.id === artist.id)) {
+      showToast(`${artist.name} ya está en tu lista`, 'error');
+      return;
+    }
+    setArtists(prev => [...prev, artist]);
+    setActiveIds(prev => [...prev, artist.id]);
+    showToast(`${artist.name} agregado`);
+  }
+
+  function handleRemoveArtist(artistId) {
+    setArtists(prev => prev.filter(a => a.id !== artistId));
+    setActiveIds(prev => prev.filter(id => id !== artistId));
   }
 
   function handleApplySettings(next) {
@@ -164,10 +214,15 @@ export default function Main() {
     setVibe(next.vibe);
     setActiveIds(next.activeIds);
     setSettingsOpen(false);
-    setPlaylistName('');
+
     const pool = artists.filter(a => next.activeIds.includes(a.id));
+    setPlaylistName(pool.length ? generatePlaylistName(pool) : '');
     generateMix({ ...next, artists: pool });
-    loadDiscover();
+    setDiscoverLoading(true);
+    getDiscoverTracks(pool, 8)
+      .then(setDiscoverTracks)
+      .catch(() => setDiscoverTracks([]))
+      .finally(() => setDiscoverLoading(false));
   }
 
   function handleLogout() {
@@ -182,20 +237,27 @@ export default function Main() {
       <header className="app-header">
         <span className="header-logo">Tune<span>Path</span></span>
         <div className="header-right">
-          {user && (
-            <div className="header-user">
-              {user.images?.[0]?.url && <img className="header-avatar" src={user.images[0].url} alt="" />}
-              <span className="header-username">{user.display_name}</span>
-            </div>
+          {user?.images?.[0]?.url && (
+            <img className="header-avatar" src={user.images[0].url} alt="" />
           )}
-          <button className="btn-icon sm" onClick={() => setSettingsOpen(true)} title="Settings">⚙️</button>
+          <button className="btn-icon sm" onClick={() => setSettingsOpen(true)} title="Settings">⚙</button>
           <button className="btn-icon sm" onClick={handleLogout} title="Log out">⏻</button>
         </div>
       </header>
 
       <div className="mode-tabs">
-        <button className={`mode-tab${mode === 'mix' ? ' active' : ''}`} onClick={() => setMode('mix')}>Mix</button>
-        <button className={`mode-tab${mode === 'artist' ? ' active' : ''}`} onClick={() => setMode('artist')}>Artist</button>
+        <button
+          className={`mode-tab${mode === 'mix' ? ' active' : ''}`}
+          onClick={() => setMode('mix')}
+        >
+          MIX
+        </button>
+        <button
+          className={`mode-tab${mode === 'artist' ? ' active' : ''}`}
+          onClick={() => setMode('artist')}
+        >
+          ARTIST
+        </button>
       </div>
 
       {mode === 'mix' ? (
@@ -204,17 +266,25 @@ export default function Main() {
           loading={mixLoading}
           playlistName={playlistName}
           onPlaylistNameChange={setPlaylistName}
-          onRefresh={() => generateMix()}
-          onSave={handleSaveToSpotify}
+          onNewMix={handleNewMix}
+          onSave={() => saveTracks(mixTracks, playlistName)}
           saving={saving}
           onReplaceTrack={handleReplaceTrack}
+          onRemoveTrack={handleRemoveTrack}
           discoverTracks={discoverTracks}
           discoverLoading={discoverLoading}
+          onReloadDiscover={loadDiscover}
           onAddDiscoverTrack={handleAddDiscoverTrack}
           history={history}
         />
       ) : (
-        <ArtistView artists={activeArtists.length ? activeArtists : artists} />
+        <ArtistView
+          artists={artists}
+          onAddArtist={handleAddArtist}
+          onRemoveArtist={handleRemoveArtist}
+          onSaveShuffle={saveTracks}
+          saving={saving}
+        />
       )}
 
       {settingsOpen && (

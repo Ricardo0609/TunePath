@@ -14,7 +14,7 @@ export default function Login() {
       <div className="login-bg-blob login-bg-blob-3" />
 
       <div className="login-card fade-up">
-        <h1 className="login-logo">TUNE<span>PATH</span></h1>
+        <h1 className="login-logo">Tune<span>Path</span></h1>
         <p className="login-tagline">Stop overthinking. Start listening.</p>
 
         <div className="login-features stagger">

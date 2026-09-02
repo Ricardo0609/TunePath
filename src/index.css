@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════════
    WAVESET — Global Design System
    Font: Archivo Black (display) + Mulish (body)
-   Accent: #BEFF00 acid lime on #090909 black
+   Accent: #8C3EE2 purple on #14111B near-black
 ═══════════════════════════════════════════════ */
 
 :root {
@@ -138,7 +138,7 @@ ul { list-style: none; }
   background: var(--accent); color: #000;
 }
 .btn-accent:hover {
-  background: #ccff00; transform: translateY(-1px);
+  background: #9d55ea; transform: translateY(-1px);
   box-shadow: 0 6px 20px var(--accent-glow);
 }
 .btn-accent:active { transform: none; box-shadow: none; }
@@ -250,7 +250,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 .login-bg-blob-1 {
   width: 500px; height: 500px;
-  background: radial-gradient(circle, rgba(190,255,0,0.07), transparent 70%);
+  background: radial-gradient(circle, rgba(140,62,226,0.09), transparent 70%);
   top: -150px; left: -150px;
 }
 .login-bg-blob-2 {
@@ -889,3 +889,247 @@ input[type="range"]::-webkit-slider-thumb {
 .text-accent { color: var(--accent); }
 .fw-bold { font-weight: 700; }
 .fw-black { font-weight: 800; }
+
+/* ═══════════════════════════════════════════════
+   TUNEPATH — Ajustes de wireframe
+   (sticky bar, presets, buscador de artistas)
+═══════════════════════════════════════════════ */
+
+/* ── Barra fija del mix ─────────────────────── */
+.mix-sticky-bar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 0 16px;
+  margin-bottom: 4px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+
+/* Input del nombre: rectangular, sin bordes circulares */
+.mix-playlist-name {
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: clamp(18px, 4.5vw, 24px);
+  outline: none;
+  transition: var(--transition);
+}
+.mix-playlist-name:hover { border-color: var(--border); }
+.mix-playlist-name:focus {
+  border-color: var(--accent);
+  background: var(--surface-2);
+}
+.mix-playlist-name::placeholder { color: var(--text-3); }
+
+.mix-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.mix-count {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.artist-shuffle-bar { padding-top: 4px; }
+
+/* ── Track card: acciones sobre la portada ──── */
+.track-card-media { position: relative; }
+.track-card-actions {
+  position: absolute;
+  top: 6px; right: 6px;
+  display: flex; gap: 6px;
+  opacity: 0;
+  transition: var(--transition);
+}
+.track-card:hover .track-card-actions { opacity: 1; }
+@media (hover: none) {
+  .track-card-actions { opacity: 1; }
+}
+.track-action {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(4px);
+  color: #fff;
+  font-size: 13px;
+  transition: var(--transition);
+}
+.track-action:hover { background: var(--accent); color: #fff; }
+
+.skeleton-line {
+  height: 11px; width: 80%;
+  border-radius: 4px; margin-bottom: 6px;
+}
+.skeleton-line-short { height: 9px; width: 55%; border-radius: 4px; }
+
+/* ── Settings: presets numéricos ────────────── */
+.settings-field-label {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 16px 0 10px;
+}
+.preset-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.preset-btn {
+  min-width: 44px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 700;
+  transition: var(--transition);
+}
+.preset-btn:hover { border-color: var(--border-2); color: var(--text); }
+.preset-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.preset-btn-custom { min-width: auto; }
+.preset-input {
+  width: 84px;
+  padding: 10px 12px;
+  background: var(--surface-2);
+  border: 1.5px solid var(--accent);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  outline: none;
+}
+
+/* ── Settings: artistas sin palomita ────────── */
+.settings-artist-list {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.settings-artist-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 14px 6px 6px;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: 100px;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+.settings-artist-item:hover { border-color: var(--border-2); }
+.settings-artist-item.checked {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+.settings-artist-item.checked span { color: var(--accent); }
+.settings-artist-item img {
+  width: 30px; height: 30px;
+  border-radius: 50%; object-fit: cover;
+  background: var(--surface-3);
+}
+.settings-artist-item span {
+  font-size: 13px; font-weight: 700;
+  color: var(--text-2);
+  transition: color var(--transition);
+}
+
+.settings-footer .btn { flex: 1; justify-content: center; }
+
+/* ── Artist view: pill de agregar + buscador ── */
+.artist-pill-add {
+  padding: 8px 16px;
+  font-size: 16px;
+  color: var(--text-2);
+  justify-content: center;
+}
+.artist-pill-add.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.artist-pill-remove {
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 9px;
+  margin-left: 2px;
+  transition: var(--transition);
+}
+.artist-pill-remove:hover { background: var(--red); color: #fff; }
+
+.artist-search {
+  display: flex; flex-direction: column; gap: 10px;
+  margin-bottom: 20px;
+}
+.artist-search-results {
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 320px; overflow-y: auto;
+}
+.artist-search-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+}
+.artist-search-item:hover { border-color: var(--accent); background: var(--surface-2); }
+.artist-search-item.disabled { opacity: 0.45; cursor: default; }
+.artist-search-item.disabled:hover { border-color: var(--border); background: var(--surface); }
+.artist-search-item img {
+  width: 36px; height: 36px;
+  border-radius: 50%; object-fit: cover;
+  background: var(--surface-3);
+}
+.artist-search-info { flex: 1; min-width: 0; }
+.artist-search-name {
+  font-size: 13px; font-weight: 700;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.artist-search-genre { font-size: 11px; color: var(--text-3); margin-top: 2px; }
+.artist-search-add { color: var(--accent); font-size: 14px; font-weight: 800; }
+
+/* ── Discover ───────────────────────────────── */
+.discover-empty { padding: 8px 0 4px; }
+.discover-add-btn {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--accent);
+  font-size: 16px; font-weight: 700;
+  flex-shrink: 0;
+  transition: var(--transition);
+}
+.discover-add-btn:hover { background: var(--accent); color: #fff; }
+
+/* ── Título del artista ─────────────────────── */
+.artist-content-title {
+  font-family: var(--font-display);
+  font-size: clamp(18px, 4.5vw, 24px);
+  margin-bottom: 14px;
+}
+.artist-controls {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 20px; flex-wrap: wrap;
+}

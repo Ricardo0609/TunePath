@@ -2,45 +2,39 @@
 // TUNEPATH — Spotify Web API Utilities
 // ─────────────────────────────────────────────
 //
-// CONTEXTO DE LOS CAMBIOS DE LA API DE SPOTIFY
+// LIMITE CLAVE (causa de los errores 400):
+// En apps en Development Mode, los endpoints de catalogo aceptan
+// como maximo limit=10 (default 5). Pedir limit=50 devuelve
+// 400 Bad Request. Aplica a /search, /artists/{id}/albums y
+// /albums/{id}/tracks. Por eso aqui NUNCA se pide mas de 10 por
+// request: para traer mas datos se pagina con offset.
 //
-// 1) Nov 2024 — /recommendations, /audio-features y /related-artists
-//    quedaron deprecados. No hay reemplazo oficial.
-// 2) Feb 2026 — para apps en Development Mode:
-//      - GET /artists/{id}/top-tracks fue eliminado.
-//      - /search limit maximo bajo de 50 a 10.
-//      - POST /users/{id}/playlists -> POST /me/playlists
-//      - POST /playlists/{id}/tracks -> POST /playlists/{id}/items
-//      - el campo `popularity` fue eliminado.
+// OJO: Spotify a veces responde 400 con el mensaje "Invalid limit"
+// aunque la causa real sea falta de acceso al catalogo para apps sin
+// Extended Quota Mode. Por eso api() imprime el mensaje real de
+// Spotify en consola — si algo falla, ahi esta el motivo exacto.
 //
-// POR QUE SE REESCRIBIO ESTE ARCHIVO
+// OTROS CAMBIOS DE LA API YA CONTEMPLADOS:
+//   - /recommendations, /audio-features, /related-artists: deprecados.
+//   - GET /artists/{id}/top-tracks: eliminado.
+//   - POST /users/{id}/playlists  -> POST /me/playlists
+//   - POST /playlists/{id}/tracks -> POST /playlists/{id}/items
+//   - campo `popularity`: eliminado.
 //
-// La version anterior obtenia las canciones de un artista con /search
-// (`artist:"Nombre"`). Eso causaba el bug de las portadas equivocadas:
-// /search es una coincidencia de TEXTO, no un lookup por ID, asi que
-// devolvia covers, tributos y recopilatorios de otros artistas. Y si el
-// filtro estricto por ID se quedaba vacio, habia un fallback que
-// aceptaba esos resultados equivocados.
-//
-// Ahora se usa el CATALOGO REAL del artista:
-//     /artists/{id}/albums  ->  /albums/{id}/tracks
-// Eso garantiza que cada cancion pertenece al artista y que su portada
-// es la del album al que realmente pertenece.
-//
-// NOTA: /albums/{id}/tracks devuelve "simplified track objects", que NO
-// incluyen el campo `album`. Por eso aqui se le adjunta el album a mano
-// (ver attachAlbum) — de ahi salen las portadas correctas.
+// Se quito `market=US`: con un token de usuario valido, el pais de la
+// cuenta tiene prioridad sobre ese parametro, asi que solo agregaba
+// superficie para fallar.
 
 import { getToken } from './auth';
 
 const BASE = 'https://api.spotify.com/v1';
-const SEARCH_LIMIT_MAX = 10; // tope duro desde Feb 2026
+const PAGE_LIMIT = 10; // tope duro de la API
 
-// Cache en memoria por sesion: evita repetir decenas de requests al
-// regenerar el mix o al volver a abrir un artista. Se limpia al recargar.
+// Cache en memoria por sesion (evita repetir decenas de requests)
 const catalogCache = new Map();
+const albumsCache = new Map();
 
-async function api(path, opts = {}) {
+async function api(path, opts = {}, retries = 2) {
   const token = await getToken();
   const res = await fetch(`${BASE}${path}`, {
     ...opts,
@@ -53,12 +47,44 @@ async function api(path, opts = {}) {
 
   if (res.status === 204) return null;
 
+  // Rate limit: Spotify manda Retry-After en segundos
+  if (res.status === 429 && retries > 0) {
+    const wait = Number(res.headers.get('Retry-After') || 1) * 1000;
+    await new Promise(r => setTimeout(r, Math.min(wait, 5000)));
+    return api(path, opts, retries - 1);
+  }
+
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error?.message || `Spotify API error ${res.status}`);
+    const msg = body.error?.message || `Spotify API error ${res.status}`;
+    // Mensaje real de Spotify, para no diagnosticar a ciegas
+    console.error(`[Spotify ${res.status}] ${path} → ${msg}`);
+    throw new Error(msg);
   }
 
   return res.json();
+}
+
+/**
+ * Pagina un endpoint que devuelve { items, next } respetando el tope
+ * de 10 por request. `max` corta el total para no disparar el rate limit.
+ */
+async function getPaged(path, { max = 50, key = null } = {}) {
+  const items = [];
+  let offset = 0;
+
+  while (items.length < max) {
+    const sep = path.includes('?') ? '&' : '?';
+    const page = await api(`${path}${sep}limit=${PAGE_LIMIT}&offset=${offset}`);
+    const bucket = key ? page?.[key] : page;
+    const batch = bucket?.items || [];
+
+    items.push(...batch);
+    if (batch.length < PAGE_LIMIT || !bucket?.next) break;
+    offset += PAGE_LIMIT;
+  }
+
+  return items.slice(0, max);
 }
 
 // ── User ──────────────────────────────────────
@@ -70,23 +96,21 @@ export const getMe = () => api('/me');
 export async function searchArtists(query) {
   if (!query?.trim()) return [];
   const data = await api(
-    `/search?q=${encodeURIComponent(query)}&type=artist&limit=${SEARCH_LIMIT_MAX}`
+    `/search?q=${encodeURIComponent(query)}&type=artist&limit=${PAGE_LIMIT}`
   );
   return (data.artists?.items || []).filter(a => a.name);
 }
 
 // ── Albums (orden cronologico) ────────────────
 
-export async function getArtistAlbums(artistId, { includeSingles = true } = {}) {
-  const groups = includeSingles ? 'album,single' : 'album';
-  const data = await api(
-    `/artists/${artistId}/albums?include_groups=${groups}&market=US&limit=50`
-  );
+export async function getArtistAlbums(artistId, { max = 40 } = {}) {
+  if (albumsCache.has(artistId)) return albumsCache.get(artistId);
 
-  // Spotify devuelve variantes regionales y reediciones con el mismo
-  // nombre: nos quedamos con la mas antigua de cada nombre normalizado.
+  const raw = await getPaged(`/artists/${artistId}/albums?include_groups=album,single`, { max });
+
+  // Dedup: nos quedamos con la edicion mas antigua de cada nombre
   const seen = new Map();
-  for (const album of data.items || []) {
+  for (const album of raw) {
     const key = album.name
       .toLowerCase()
       .replace(/\s*[\(\[].*?(remaster|deluxe|edition|version|anniversary).*?[\)\]]/g, '')
@@ -98,38 +122,37 @@ export async function getArtistAlbums(artistId, { includeSingles = true } = {}) 
     }
   }
 
-  // Cronologico, del mas viejo al mas nuevo
-  return [...seen.values()].sort(
+  const sorted = [...seen.values()].sort(
     (a, b) => new Date(a.release_date) - new Date(b.release_date)
   );
+
+  albumsCache.set(artistId, sorted);
+  return sorted;
 }
 
-// ── Catalogo de canciones de un artista ───────
+// ── Catalogo de canciones ─────────────────────
 
 /**
- * Los tracks de /albums/{id}/tracks vienen "simplificados" (sin `album`).
- * Les pegamos el album para que las portadas salgan correctas.
+ * /albums/{id}/tracks devuelve tracks "simplificados" SIN el campo
+ * `album`. Se lo adjuntamos para que las portadas salgan correctas
+ * (esta era la causa del bug de portadas equivocadas).
  */
-function attachAlbum(track, album) {
-  return { ...track, album };
-}
-
-async function getAlbumTracks(album) {
-  const data = await api(`/albums/${album.id}/tracks?limit=50&market=US`);
-  return (data.items || []).map(t => attachAlbum(t, album));
+async function getAlbumTracks(album, { max = 20 } = {}) {
+  const items = await getPaged(`/albums/${album.id}/tracks`, { max });
+  return items.map(t => ({ ...t, album }));
 }
 
 /**
- * Devuelve el catalogo real de canciones de un artista.
- * Limita cuantos albumes consulta para no disparar el rate limit.
+ * Catalogo real de un artista. maxAlbums se mantiene bajo a proposito:
+ * con el tope de 10 por request, cada album cuesta 1-2 llamadas.
  */
-export async function getArtistCatalog(artist, { maxAlbums = 14 } = {}) {
+export async function getArtistCatalog(artist, { maxAlbums = 8 } = {}) {
   if (catalogCache.has(artist.id)) return catalogCache.get(artist.id);
 
   const albums = await getArtistAlbums(artist.id);
   if (!albums.length) return [];
 
-  // Si hay muchos albumes, priorizamos los de tipo "album" y recortamos
+  // Priorizamos LPs sobre singles
   const prioritized = [
     ...albums.filter(a => a.album_type === 'album'),
     ...albums.filter(a => a.album_type !== 'album'),
@@ -139,10 +162,9 @@ export async function getArtistCatalog(artist, { maxAlbums = 14 } = {}) {
     prioritized.map(a => getAlbumTracks(a).catch(() => []))
   );
 
-  // Solo canciones donde el artista realmente participa
   let tracks = perAlbum.flat().filter(t => t.artists?.some(a => a.id === artist.id));
 
-  // Dedup por nombre normalizado (live, remaster, remix duplicados)
+  // Dedup por nombre normalizado (live / remaster / remix repetidos)
   const seen = new Set();
   tracks = tracks.filter(t => {
     const key = t.name.toLowerCase().replace(/\s*[\(\[].*?[\)\]]/g, '').replace(/\s+/g, ' ').trim();
@@ -157,16 +179,11 @@ export async function getArtistCatalog(artist, { maxAlbums = 14 } = {}) {
 
 // ── Vibes ─────────────────────────────────────
 //
-// IMPORTANTE / LIMITACION REAL:
-// Spotify elimino audio-features (energy, valence, danceability) y
-// tambien el campo popularity. Ya NO existe forma de leer el "mood"
-// real de una cancion desde la API publica.
-//
-// Lo que si existe y es confiable: la DURACION de cada track. Se usa
-// como proxy honesto — los cortes largos tienden a ser mas lentos /
-// atmosfericos, los cortos mas directos. Es una aproximacion, no una
-// deteccion de animo. Documentado asi a proposito para no fingir una
-// funcionalidad que la API ya no permite.
+// LIMITACION REAL: Spotify elimino audio-features (energy, valence,
+// danceability) y el campo popularity. No hay forma de leer el "mood"
+// real desde la API publica. Se usa la DURACION como proxy honesto:
+// los cortes largos suelen ser mas lentos/atmosfericos, los cortos mas
+// directos. Es una aproximacion, no deteccion de animo.
 
 const VIBES = {
   balanced:  { label: 'Balanced',  icon: '🎲', bias: null },
@@ -182,11 +199,6 @@ export function getVibeList() {
   return Object.entries(VIBES).map(([id, v]) => ({ id, ...v }));
 }
 
-/**
- * Aplica el sesgo de vibra sobre el catalogo: toma la mitad
- * correspondiente (cortas o largas) y de ahi elige al azar, para que dos
- * mixes con la misma vibra no salgan identicos.
- */
 function applyVibe(tracks, vibeId) {
   const bias = VIBES[vibeId]?.bias;
   if (!bias || tracks.length < 6) return tracks;
@@ -198,7 +210,6 @@ function applyVibe(tracks, vibeId) {
 
 // ── Helpers de seleccion ──────────────────────
 
-/** Elige `count` elementos unicos al azar */
 export function pickRandom(arr, count) {
   const copy = [...arr];
   for (let i = copy.length - 1; i > 0; i--) {
@@ -214,29 +225,21 @@ export function shuffle(arr) {
 
 // ── Mix ───────────────────────────────────────
 
-/**
- * Arma un mix a partir de varios artistas usando su catalogo real.
- * @param {Array} artists - objetos artista completos (.id, .name)
- * @param {Object} opts - { songsPerArtist, totalSongs, vibe }
- */
 export async function buildMix(artists, { songsPerArtist = 3, totalSongs = 20, vibe = null } = {}) {
   if (!artists.length) return [];
 
-  const perArtist = await Promise.all(
+  const catalogs = await Promise.all(
     artists.map(async artist => {
       try {
-        const catalog = await getArtistCatalog(artist);
-        const pool = applyVibe(catalog, vibe);
-        return pickRandom(pool, songsPerArtist);
+        return { artist, tracks: applyVibe(await getArtistCatalog(artist), vibe) };
       } catch {
-        return [];
+        return { artist, tracks: [] };
       }
     })
   );
 
-  let pool = perArtist.flat();
+  let pool = catalogs.flatMap(c => pickRandom(c.tracks, songsPerArtist));
 
-  // Dedup por id
   const seen = new Set();
   pool = pool.filter(t => {
     if (seen.has(t.id)) return false;
@@ -244,19 +247,9 @@ export async function buildMix(artists, { songsPerArtist = 3, totalSongs = 20, v
     return true;
   });
 
-  // Si falta para llegar al total, rellenamos con mas del mismo catalogo
+  // Relleno si no se llego al total (reusa los catalogos ya cargados)
   if (pool.length < totalSongs) {
-    const extras = await Promise.all(
-      artists.map(async artist => {
-        try {
-          const catalog = await getArtistCatalog(artist);
-          return applyVibe(catalog, vibe);
-        } catch {
-          return [];
-        }
-      })
-    );
-    const filler = extras.flat().filter(t => !seen.has(t.id));
+    const filler = catalogs.flatMap(c => c.tracks).filter(t => !seen.has(t.id));
     pool = [...pool, ...pickRandom(filler, totalSongs - pool.length)];
   }
 
@@ -265,28 +258,19 @@ export async function buildMix(artists, { songsPerArtist = 3, totalSongs = 20, v
 
 // ── Shuffle de un solo artista ────────────────
 
-/** Playlist aleatoria hecha solo con canciones de ese artista */
 export async function getArtistShuffle(artist, count = 25) {
-  const catalog = await getArtistCatalog(artist);
+  const catalog = await getArtistCatalog(artist, { maxAlbums: 12 });
   return pickRandom(catalog, Math.min(count, catalog.length));
 }
 
 // ── Discover ──────────────────────────────────
 
-/**
- * Reemplazo de /recommendations (deprecado). Usa los generos de los
- * artistas que ya elegiste y busca canciones de esos generos, excluyendo
- * a tus propios artistas para que si aparezca musica nueva.
- *
- * Si los artistas guardados no traen `genres` (por venir de una version
- * vieja del localStorage), los recarga desde /artists.
- */
 export async function getDiscoverTracks(seedArtists, limit = 8) {
   if (!seedArtists.length) return [];
 
   let artists = seedArtists;
 
-  // Rehidratar generos si hacen falta
+  // Rehidratar generos si los artistas guardados no los traen
   if (!artists.some(a => a.genres?.length)) {
     try {
       const ids = artists.slice(0, 20).map(a => a.id).join(',');
@@ -307,7 +291,7 @@ export async function getDiscoverTracks(seedArtists, limit = 8) {
     sampledGenres.map(async genre => {
       try {
         const data = await api(
-          `/search?q=${encodeURIComponent(`genre:"${genre}"`)}&type=track&limit=${SEARCH_LIMIT_MAX}`
+          `/search?q=${encodeURIComponent(`genre:"${genre}"`)}&type=track&limit=${PAGE_LIMIT}`
         );
         return data.tracks?.items || [];
       } catch {
@@ -318,7 +302,6 @@ export async function getDiscoverTracks(seedArtists, limit = 8) {
 
   let tracks = results.flat().filter(t => !t.artists?.some(a => seedIds.has(a.id)));
 
-  // Dedup por cancion y por artista (para no repetir el mismo descubrimiento)
   const seenTrack = new Set();
   const seenArtist = new Set();
   tracks = tracks.filter(t => {
@@ -336,7 +319,6 @@ export async function getDiscoverTracks(seedArtists, limit = 8) {
 // ── Crear playlist ────────────────────────────
 
 export async function createSpotifyPlaylist(tracks, name) {
-  // 1 — Crear playlist vacia (POST /me/playlists)
   const playlist = await api('/me/playlists', {
     method: 'POST',
     body: JSON.stringify({
@@ -346,7 +328,6 @@ export async function createSpotifyPlaylist(tracks, name) {
     }),
   });
 
-  // 2 — Agregar en lotes de 100 (POST /playlists/{id}/items)
   const uris = tracks.map(t => t.uri).filter(Boolean);
   for (let i = 0; i < uris.length; i += 100) {
     await api(`/playlists/${playlist.id}/items`, {
@@ -376,7 +357,6 @@ export function getSpotifyUrl(type, id) {
   return `https://open.spotify.com/${type}/${id}`;
 }
 
-/** Nombre de playlist segun artistas y hora del dia */
 export function generatePlaylistName(artists) {
   const hour = new Date().getHours();
 

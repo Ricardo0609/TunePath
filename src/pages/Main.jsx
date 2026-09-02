@@ -180,7 +180,7 @@ export default function Main() {
   return (
     <div className="app-layout">
       <header className="app-header">
-        <span className="header-logo">WAVE<span>SET</span></span>
+        <span className="header-logo">Tune<span>Path</span></span>
         <div className="header-right">
           {user && (
             <div className="header-user">

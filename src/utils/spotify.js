@@ -98,6 +98,21 @@ export async function getArtistTracks(artist, { vibeId = null, limit = SEARCH_LI
   return matched.length ? matched : items;
 }
 
+/**
+ * Shuffle tracks for an artist.
+ */
+export async function getArtistShuffle(artist, count = 5) {
+  const tracks = await getArtistTracks(artist, { limit: SEARCH_LIMIT_MAX });
+  return pickRandom(tracks, count);
+}
+
+/**
+ * Alias for getArtistTracks to preserve compatibility.
+ */
+export async function getArtistTopTracks(artist) {
+  return getArtistTracks(artist);
+}
+
 // ── Artist albums (still available, unaffected by the Feb 2026 changes) ──
 
 export async function getArtistAlbums(artistId) {

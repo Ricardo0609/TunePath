@@ -2,55 +2,6 @@ import { useState } from 'react';
 import { getArtistImage, getVibeList } from '../utils/spotify';
 
 const VIBES = getVibeList();
-const SONGS_PRESETS = [1, 3, 5];
-const TOTAL_PRESETS = [10, 20, 30];
-
-/** Grupo de presets + Custom (input numérico que aparece al elegirlo) */
-function PresetGroup({ presets, value, min, max, onChange }) {
-  const isPreset = presets.includes(value);
-  const [custom, setCustom] = useState(!isPreset);
-
-  function handleCustomInput(raw) {
-    const n = Number(raw);
-    if (!raw) return onChange('');
-    if (Number.isNaN(n)) return;
-    onChange(Math.min(max, Math.max(min, n)));
-  }
-
-  return (
-    <div className="preset-group">
-      {presets.map(p => (
-        <button
-          key={p}
-          className={`preset-btn${!custom && value === p ? ' active' : ''}`}
-          onClick={() => {
-            setCustom(false);
-            onChange(p);
-          }}
-        >
-          {p}
-        </button>
-      ))}
-      <button
-        className={`preset-btn preset-btn-custom${custom ? ' active' : ''}`}
-        onClick={() => setCustom(true)}
-      >
-        Custom
-      </button>
-      {custom && (
-        <input
-          className="preset-input"
-          type="number"
-          min={min}
-          max={max}
-          value={value}
-          autoFocus
-          onChange={e => handleCustomInput(e.target.value)}
-        />
-      )}
-    </div>
-  );
-}
 
 export default function SettingsPanel({
   artists,
@@ -63,7 +14,7 @@ export default function SettingsPanel({
 }) {
   const [localSongsPerArtist, setLocalSongsPerArtist] = useState(songsPerArtist);
   const [localTotalSongs, setLocalTotalSongs] = useState(totalSongs);
-  const [localVibe, setLocalVibe] = useState(vibe || 'balanced');
+  const [localVibe, setLocalVibe] = useState(vibe);
   const [localActiveIds, setLocalActiveIds] = useState(activeIds);
 
   function toggleArtist(id) {
@@ -74,8 +25,8 @@ export default function SettingsPanel({
 
   function handleApply() {
     onApply({
-      songsPerArtist: Number(localSongsPerArtist) || 3,
-      totalSongs: Number(localTotalSongs) || 20,
+      songsPerArtist: localSongsPerArtist,
+      totalSongs: localTotalSongs,
       vibe: localVibe,
       activeIds: localActiveIds.length ? localActiveIds : artists.map(a => a.id),
     });
@@ -88,34 +39,51 @@ export default function SettingsPanel({
         <div className="settings-inner">
           <div className="settings-header">
             <h2 className="settings-title">Settings</h2>
-            <button className="btn-icon sm" onClick={onClose}>✕</button>
+            <span className="btn-icon sm" onClick={onClose}>✕</span>
           </div>
 
           <div className="settings-section">
-            <p className="settings-section-label">MIX SIZE</p>
+            <p className="settings-section-label">Mix size</p>
 
-            <p className="settings-field-label">Songs per artist</p>
-            <PresetGroup
-              presets={SONGS_PRESETS}
-              value={localSongsPerArtist}
-              min={1}
-              max={20}
-              onChange={setLocalSongsPerArtist}
-            />
+            <div className="settings-row">
+              <span className="settings-row-label">Songs per artist</span>
+              <span className="settings-row-value">{localSongsPerArtist}</span>
+            </div>
+            <div className="settings-range-wrap">
+              <input
+                type="range"
+                min="1"
+                max="8"
+                value={localSongsPerArtist}
+                onChange={e => setLocalSongsPerArtist(Number(e.target.value))}
+              />
+            </div>
 
-            <p className="settings-field-label">Total songs</p>
-            <PresetGroup
-              presets={TOTAL_PRESETS}
-              value={localTotalSongs}
-              min={5}
-              max={100}
-              onChange={setLocalTotalSongs}
-            />
+            <div className="settings-row" style={{ marginTop: 20 }}>
+              <span className="settings-row-label">Total songs</span>
+              <span className="settings-row-value">{localTotalSongs}</span>
+            </div>
+            <div className="settings-range-wrap">
+              <input
+                type="range"
+                min="5"
+                max="50"
+                value={localTotalSongs}
+                onChange={e => setLocalTotalSongs(Number(e.target.value))}
+              />
+            </div>
           </div>
 
           <div className="settings-section">
-            <p className="settings-section-label">VIBE</p>
+            <p className="settings-section-label">Vibe</p>
             <div className="settings-vibe-grid">
+              <button
+                className={`vibe-btn${!localVibe ? ' active' : ''}`}
+                onClick={() => setLocalVibe(null)}
+              >
+                <span>🎲</span>
+                <span>Balanced</span>
+              </button>
               {VIBES.map(v => (
                 <button
                   key={v.id}
@@ -130,20 +98,20 @@ export default function SettingsPanel({
           </div>
 
           <div className="settings-section">
-            <p className="settings-section-label">ARTIST IN THIS MIX</p>
+            <p className="settings-section-label">Artists in this mix</p>
             <div className="settings-artist-list">
               {artists.map(artist => {
                 const checked = localActiveIds.includes(artist.id);
                 return (
-                  <button
+                  <div
                     key={artist.id}
-                    type="button"
                     className={`settings-artist-item${checked ? ' checked' : ''}`}
                     onClick={() => toggleArtist(artist.id)}
                   >
                     {getArtistImage(artist) && <img src={getArtistImage(artist)} alt="" />}
                     <span>{artist.name}</span>
-                  </button>
+                    <span className="settings-artist-check">{checked ? '✓' : ''}</span>
+                  </div>
                 );
               })}
             </div>
@@ -151,8 +119,8 @@ export default function SettingsPanel({
         </div>
 
         <div className="settings-footer">
-          <button className="btn btn-ghost" onClick={onClose}>Cancel</button>
-          <button className="btn btn-accent" onClick={handleApply}>APPLY</button>
+          <button className="btn btn-ghost" onClick={onClose} style={{ flex: 1 }}>Cancel</button>
+          <button className="btn btn-accent" onClick={handleApply} style={{ flex: 1 }}>Apply</button>
         </div>
       </div>
     </>

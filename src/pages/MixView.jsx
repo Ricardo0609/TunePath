@@ -1,24 +1,19 @@
 import { getTrackImage } from '../utils/spotify';
 
-function TrackCard({ track, onReplace, onRemove }) {
+function TrackCard({ track, onReplace }) {
   return (
     <div className="track-card">
-      <div className="track-card-media">
-        {getTrackImage(track) ? (
-          <img className="track-card-img" src={getTrackImage(track)} alt="" />
-        ) : (
-          <div className="track-card-img skeleton" />
-        )}
-        <div className="track-card-actions">
-          <button className="track-action" onClick={onReplace} title="Cambiar canción">⟳</button>
-          <button className="track-action" onClick={onRemove} title="Quitar del mix">✕</button>
-        </div>
-      </div>
+      {getTrackImage(track) ? (
+        <img className="track-card-img" src={getTrackImage(track)} alt="" />
+      ) : (
+        <div className="track-card-img skeleton" />
+      )}
       <div className="track-card-info">
         <p className="track-card-name">{track.name}</p>
-        <p className="track-card-artist">
-          {track.album?.name || track.artists?.map(a => a.name).join(', ')}
-        </p>
+        <p className="track-card-artist">{track.artists?.map(a => a.name).join(', ')}</p>
+      </div>
+      <div className="track-card-actions">
+        <span className="track-card-replace" onClick={onReplace} title="Replace track">⟳</span>
       </div>
     </div>
   );
@@ -26,12 +21,10 @@ function TrackCard({ track, onReplace, onRemove }) {
 
 function SkeletonCard() {
   return (
-    <div className="track-card">
-      <div className="skeleton track-card-img" />
-      <div className="track-card-info">
-        <div className="skeleton skeleton-line" />
-        <div className="skeleton skeleton-line-short" />
-      </div>
+    <div className="track-card track-card-skeleton">
+      <div className="skeleton skeleton-img" />
+      <div className="skeleton skeleton-line" />
+      <div className="skeleton skeleton-line-short" />
     </div>
   );
 }
@@ -41,119 +34,83 @@ export default function MixView({
   loading,
   playlistName,
   onPlaylistNameChange,
-  onNewMix,
+  onRefresh,
   onSave,
   saving,
   onReplaceTrack,
-  onRemoveTrack,
   discoverTracks,
   discoverLoading,
-  onReloadDiscover,
   onAddDiscoverTrack,
   history,
 }) {
   return (
     <div className="mix-view">
-      {/* Barra fija: nombre + acciones. Se queda visible al hacer scroll */}
-      <div className="mix-sticky-bar">
+      <div className="mix-top-bar">
         <input
-          className="mix-playlist-name"
+          className="mix-playlist-name input"
+          style={{ background: 'transparent', border: 'none', padding: 0 }}
           value={playlistName}
-          placeholder="Nombre de la playlist"
           onChange={e => onPlaylistNameChange(e.target.value)}
         />
-        <div className="mix-actions">
-          <button className="btn btn-accent" onClick={onNewMix} disabled={loading}>
-            <span>⊞</span> NEW MIX
-          </button>
-          <button className="btn btn-spotify" onClick={onSave} disabled={saving || !tracks.length}>
-            {saving ? <span className="spinner" /> : <span>💿</span>} Save to Spotify
-          </button>
-          <span className="mix-count">{tracks.length} tracks</span>
+        <div className="mix-top-bar-right">
+          <button className="btn-icon" onClick={onRefresh} disabled={loading} title="Refresh mix">🔄</button>
         </div>
       </div>
 
-      <div className="track-grid">
+      <div className="track-grid stagger">
         {loading
-          ? Array.from({ length: 8 }).map((_, i) => <SkeletonCard key={i} />)
+          ? Array.from({ length: 10 }).map((_, i) => <SkeletonCard key={i} />)
           : tracks.map((track, i) => (
-              <TrackCard
-                key={`${track.id}-${i}`}
-                track={track}
-                onReplace={() => onReplaceTrack(i)}
-                onRemove={() => onRemoveTrack(i)}
-              />
+              <TrackCard key={track.id} track={track} onReplace={() => onReplaceTrack(i)} />
             ))}
       </div>
 
       {!loading && !tracks.length && (
         <div className="empty-state">
           <span className="empty-state-icon">🎵</span>
-          <span className="empty-state-text">No hay canciones todavía</span>
-          <span className="empty-state-sub">Dale a NEW MIX o revisa tus artistas en Settings</span>
+          <span className="empty-state-text">No tracks yet</span>
+          <span className="empty-state-sub">Try refreshing or picking a few artists in Settings</span>
         </div>
       )}
 
-      {/* ── Discover ── */}
-      <div className="discover-section">
-        <div className="discover-header">
-          <span className="discover-title">⌁ DISCOVER</span>
-          <button className="btn-icon sm" onClick={onReloadDiscover} title="Buscar otras">⟳</button>
-        </div>
-
-        {discoverLoading && (
-          <div className="discover-list">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div className="discover-item" key={i}>
-                <div className="skeleton discover-item-img" />
-                <div className="discover-item-info">
-                  <div className="skeleton skeleton-line" />
-                  <div className="skeleton skeleton-line-short" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
-        {!discoverLoading && !discoverTracks.length && (
-          <p className="text-sm text-muted discover-empty">
-            No hay sugerencias ahora mismo. Prueba con ⟳ o agrega más artistas.
-          </p>
-        )}
-
-        {!discoverLoading && discoverTracks.length > 0 && (
-          <div className="discover-list">
-            {discoverTracks.map(track => (
-              <div className="discover-item" key={track.id}>
-                {getTrackImage(track) ? (
-                  <img className="discover-item-img" src={getTrackImage(track)} alt="" />
-                ) : (
-                  <div className="discover-item-img skeleton" />
-                )}
-                <div className="discover-item-info">
-                  <p className="discover-item-name">{track.name}</p>
-                  <p className="discover-item-artist">
-                    {track.artists?.map(a => a.name).join(', ')}
-                  </p>
-                </div>
-                <button
-                  className="discover-add-btn"
-                  onClick={() => onAddDiscoverTrack(track)}
-                  title="Agregar al mix"
-                >
-                  +
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+      <div className="mix-action-bar">
+        <button className="btn btn-spotify" onClick={onSave} disabled={saving || !tracks.length}>
+          {saving ? <span className="spinner" /> : '💿'} Save to Spotify
+        </button>
+        <span className="spacer" />
+        <span className="text-sm text-muted">{tracks.length} track{tracks.length === 1 ? '' : 's'}</span>
       </div>
 
-      {/* ── Historial ── */}
+      <div className="discover-section">
+        <div className="discover-header">
+          <span className="discover-title">🔭 <span>Discover</span></span>
+        </div>
+        <div className="discover-list">
+          {discoverLoading && <p className="text-sm text-muted">Finding new tracks…</p>}
+          {!discoverLoading && !discoverTracks.length && (
+            <p className="text-sm text-muted">No new suggestions right now — try different artists.</p>
+          )}
+          {discoverTracks.map(track => (
+            <div className="discover-item" key={track.id}>
+              {getTrackImage(track) ? (
+                <img className="discover-item-img" src={getTrackImage(track)} alt="" />
+              ) : (
+                <div className="discover-item-img skeleton" />
+              )}
+              <div className="discover-item-info">
+                <p className="discover-item-name">{track.name}</p>
+                <p className="discover-item-artist">{track.artists?.map(a => a.name).join(', ')}</p>
+              </div>
+              <span className="discover-add-btn" onClick={() => onAddDiscoverTrack(track)} title="Add to mix">+</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
       {history.length > 0 && (
         <div className="history-section">
           <div className="history-header">
-            <span className="history-title">Playlists recientes</span>
+            <span className="history-title">Recent playlists</span>
           </div>
           <div className="history-list">
             {history.map(item => (

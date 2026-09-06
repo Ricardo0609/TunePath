@@ -13,6 +13,7 @@ import {
 import MixView from './MixView';
 import ArtistView from './ArtistView';
 import SettingsPanel from './SettingsPanel';
+import AddArtistsPanel from './AddArtistsPanel';
 
 const HISTORY_KEY = 'ws_history';
 const MAX_HISTORY = 10;
@@ -31,6 +32,7 @@ export default function Main() {
   const [user, setUser] = useState(() => readJSON('ws_user', null));
   const [artists] = useState(() => readJSON('ws_artists', []));
   const [activeIds, setActiveIds] = useState(() => artists.map(a => a.id));
+  const [addOpen, setAddOpen] = useState(false);
 
   const [mode, setMode] = useState('mix'); // 'mix' | 'artist'
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -196,6 +198,14 @@ export default function Main() {
       <div className="mode-tabs">
         <button className={`mode-tab${mode === 'mix' ? ' active' : ''}`} onClick={() => setMode('mix')}>Mix</button>
         <button className={`mode-tab${mode === 'artist' ? ' active' : ''}`} onClick={() => setMode('artist')}>Artist</button>
+                <button
+          className="mode-tab"
+         onClick={() => setAddOpen(true)}
+          title="Añadir más artistas"
+          style={{ flex: '0 0 auto', paddingLeft: 18, paddingRight: 18 }}
+        >
+          +
+        </button>
       </div>
 
       {mode === 'mix' ? (
@@ -226,6 +236,17 @@ export default function Main() {
           vibe={vibe}
           onApply={handleApplySettings}
           onClose={() => setSettingsOpen(false)}
+        />
+      )}
+      {addOpen && (
+        <AddArtistsPanel
+          artists={artists}
+          onClose={() => setAddOpen(false)}
+          onApply={next => {
+            localStorage.setItem('ws_artists', JSON.stringify(next));
+            setAddOpen(false);
+            window.location.reload();
+          }}
         />
       )}
 

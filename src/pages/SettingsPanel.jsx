@@ -110,7 +110,7 @@ export default function SettingsPanel({
                   >
                     {getArtistImage(artist) && <img src={getArtistImage(artist)} alt="" />}
                     <span>{artist.name}</span>
-                    <span className="settings-artist-check">{checked ? '✓' : ''}</span>
+                   
                   </div>
                 );
               })}

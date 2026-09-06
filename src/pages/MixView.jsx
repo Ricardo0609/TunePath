@@ -41,6 +41,7 @@ export default function MixView({
   discoverTracks,
   discoverLoading,
   onAddDiscoverTrack,
+  onRefreshDiscover,
   history,
 }) {
   return (
@@ -84,11 +85,21 @@ export default function MixView({
       <div className="discover-section">
         <div className="discover-header">
           <span className="discover-title">🔭 <span>Discover</span></span>
+          <button
+            className="btn-icon sm"
+            onClick={onRefreshDiscover}
+            disabled={discoverLoading}
+            title="Buscar otras bandas emergentes"
+          >
+            🔄
+          </button>
         </div>
         <div className="discover-list">
-          {discoverLoading && <p className="text-sm text-muted">Finding new tracks…</p>}
+          {discoverLoading && <p className="text-sm text-muted">Buscando bandas emergentes…</p>}
           {!discoverLoading && !discoverTracks.length && (
-            <p className="text-sm text-muted">No new suggestions right now — try different artists.</p>
+            <p className="text-sm text-muted">
+              No hay sugerencias ahora. Prueba con el botón de refrescar o selecciona otros artistas.
+            </p>
           )}
           {discoverTracks.map(track => (
             <div className="discover-item" key={track.id}>

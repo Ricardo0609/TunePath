@@ -1133,3 +1133,18 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex; align-items: center; gap: 10px;
   margin-bottom: 20px; flex-wrap: wrap;
 }
+/* ── Add Artists Panel (entra desde la izquierda) ── */
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(0); }
+}
+.add-panel {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: min(380px, 92vw);
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  z-index: 201;
+  overflow-y: auto;
+  animation: slideInLeft 0.3s var(--ease);
+  display: flex; flex-direction: column;
+}

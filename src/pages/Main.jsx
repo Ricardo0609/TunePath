@@ -139,21 +139,33 @@ export default function Main() {
 
   async function handleSaveToSpotify() {
     if (!user || !mixTracks.length) return;
+
+    // Se abre la pestaña ANTES del await: si se abre después, el
+    // navegador la bloquea por no venir de un clic directo.
+    const win = window.open('', '_blank');
+
     setSaving(true);
     try {
       const playlist = await createSpotifyPlaylist(mixTracks, playlistName);
+      const url = playlist.external_urls?.spotify;
+
       const entry = {
         id: playlist.id,
         name: playlist.name,
-        url: playlist.external_urls?.spotify,
+        url,
         date: new Date().toISOString(),
         trackCount: mixTracks.length,
       };
       const nextHistory = [entry, ...history].slice(0, MAX_HISTORY);
       setHistory(nextHistory);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(nextHistory));
-      showToast('Playlist saved to Spotify 🎉');
+
+      if (win && url) win.location.href = url;
+      else if (win) win.close();
+
+      showToast('Playlist guardada en Spotify 🎉');
     } catch (err) {
+      if (win) win.close();
       showToast(err.message || 'Could not save the playlist', 'error');
     } finally {
       setSaving(false);

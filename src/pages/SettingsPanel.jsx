@@ -3,6 +3,62 @@ import { getArtistImage, getVibeList } from '../utils/spotify';
 
 const VIBES = getVibeList();
 
+const PER_ARTIST_PRESETS = [1, 3, 5];
+const TOTAL_PRESETS = [10, 20, 30];
+
+/** Fila de presets + opción Custom con input numérico */
+function PresetRow({ label, value, presets, min, max, onChange }) {
+  const isPreset = presets.includes(value);
+  const [custom, setCustom] = useState(!isPreset);
+
+  function handleCustomChange(e) {
+    const raw = e.target.value;
+    if (raw === '') {
+      onChange('');
+      return;
+    }
+    const n = Number(raw);
+    if (Number.isNaN(n)) return;
+    onChange(Math.max(min, Math.min(max, n)));
+  }
+
+  return (
+    <div className="settings-preset-block">
+      <p className="settings-row-label">{label}</p>
+      <div className="preset-row">
+        {presets.map(p => (
+          <button
+            key={p}
+            className={`preset-btn${!custom && value === p ? ' active' : ''}`}
+            onClick={() => { setCustom(false); onChange(p); }}
+          >
+            {p}
+          </button>
+        ))}
+        <button
+          className={`preset-btn preset-btn-custom${custom ? ' active' : ''}`}
+          onClick={() => setCustom(true)}
+        >
+          Custom
+        </button>
+      </div>
+
+      {custom && (
+        <input
+          className="preset-input"
+          type="number"
+          min={min}
+          max={max}
+          value={value}
+          onChange={handleCustomChange}
+          placeholder={`${min}–${max}`}
+          autoFocus
+        />
+      )}
+    </div>
+  );
+}
+
 export default function SettingsPanel({
   artists,
   activeIds,
@@ -25,8 +81,8 @@ export default function SettingsPanel({
 
   function handleApply() {
     onApply({
-      songsPerArtist: localSongsPerArtist,
-      totalSongs: localTotalSongs,
+      songsPerArtist: Number(localSongsPerArtist) || 3,
+      totalSongs: Number(localTotalSongs) || 20,
       vibe: localVibe,
       activeIds: localActiveIds.length ? localActiveIds : artists.map(a => a.id),
     });
@@ -45,33 +101,23 @@ export default function SettingsPanel({
           <div className="settings-section">
             <p className="settings-section-label">Mix size</p>
 
-            <div className="settings-row">
-              <span className="settings-row-label">Songs per artist</span>
-              <span className="settings-row-value">{localSongsPerArtist}</span>
-            </div>
-            <div className="settings-range-wrap">
-              <input
-                type="range"
-                min="1"
-                max="8"
-                value={localSongsPerArtist}
-                onChange={e => setLocalSongsPerArtist(Number(e.target.value))}
-              />
-            </div>
+            <PresetRow
+              label="Songs per artist"
+              value={localSongsPerArtist}
+              presets={PER_ARTIST_PRESETS}
+              min={1}
+              max={20}
+              onChange={setLocalSongsPerArtist}
+            />
 
-            <div className="settings-row" style={{ marginTop: 20 }}>
-              <span className="settings-row-label">Total songs</span>
-              <span className="settings-row-value">{localTotalSongs}</span>
-            </div>
-            <div className="settings-range-wrap">
-              <input
-                type="range"
-                min="5"
-                max="50"
-                value={localTotalSongs}
-                onChange={e => setLocalTotalSongs(Number(e.target.value))}
-              />
-            </div>
+            <PresetRow
+              label="Total songs"
+              value={localTotalSongs}
+              presets={TOTAL_PRESETS}
+              min={5}
+              max={100}
+              onChange={setLocalTotalSongs}
+            />
           </div>
 
           <div className="settings-section">
@@ -110,7 +156,7 @@ export default function SettingsPanel({
                   >
                     {getArtistImage(artist) && <img src={getArtistImage(artist)} alt="" />}
                     <span>{artist.name}</span>
-                   
+                    
                   </div>
                 );
               })}

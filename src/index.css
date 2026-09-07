@@ -690,7 +690,7 @@ input[type="range"]::-webkit-slider-thumb {
   padding: 16px 24px;
   border-top: 1px solid var(--border);
   display: flex; gap: 10px;
-   margin-top: 2vw;
+  margin-top: 2vw;
 }
 
 /* ── Artist Mode ────────────────────────────── */
@@ -1149,3 +1149,98 @@ input[type="range"]::-webkit-slider-thumb {
   animation: slideInLeft 0.3s var(--ease);
   display: flex; flex-direction: column;
 }
+/* ── Barra de acciones del mix (sticky + responsive) ── */
+.mix-action-bar-top {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  margin-bottom: 20px;
+  padding: 12px 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.btn-pill {
+  border-radius: 999px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  padding: 12px 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.btn-emoji { font-size: 15px; line-height: 1; }
+
+/* En móvil: más compactos para que quepan lado a lado */
+@media (max-width: 560px) {
+  .mix-action-bar-top {
+    gap: 8px;
+    padding: 10px 0;
+  }
+  .btn-pill {
+    padding: 10px 14px;
+    font-size: 12px;
+    gap: 6px;
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .btn-emoji { font-size: 13px; }
+  /* El contador de tracks estorba en pantallas chicas */
+  .mix-action-bar-top .spacer,
+  .mix-action-bar-top .text-sm { display: none; }
+}
+
+/* ── Presets de tamaño del mix ── */
+.settings-preset-block { margin-bottom: 22px; }
+.settings-preset-block .settings-row-label {
+  display: block;
+  margin-bottom: 10px;
+}
+.preset-row {
+  display: flex;
+  gap: 6.9px;
+  flex-wrap: wrap;
+}
+.preset-btn {
+  flex: 0 0 auto;
+  min-width: 43px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s var(--ease);
+}
+.preset-btn:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.preset-btn.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-dim);
+}
+.preset-btn-custom {
+  min-width: auto;
+  padding: 10px 18px;
+}
+.preset-input {
+  margin-top: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+.preset-input:focus { outline: none; border-color: var(--accent); }

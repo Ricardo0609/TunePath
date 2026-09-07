@@ -24,12 +24,14 @@ export default function ArtistView({ artists }) {
 
   const activeArtist = artists.find(a => a.id === activeId);
 
+  // Al cambiar de artista, limpiamos todo
   useEffect(() => {
     setAlbums([]);
     setPool([]);
     setMix([]);
   }, [activeId]);
 
+  // Modo cronológico → discografía
   useEffect(() => {
     if (!activeId || shuffle) return;
     let cancelled = false;
@@ -41,6 +43,7 @@ export default function ArtistView({ artists }) {
     return () => { cancelled = true; };
   }, [activeId, shuffle]);
 
+  // Modo shuffle → mix de canciones de este artista
   useEffect(() => {
     if (!activeArtist || !shuffle) return;
     let cancelled = false;
@@ -60,8 +63,6 @@ export default function ArtistView({ artists }) {
     if (!pool.length) return;
     setMix(pickDiverse(pool, Math.min(MIX_SIZE, pool.length)));
   }
-
-  const displayedAlbums = albums;
 
   return (
     <div className="artist-view">
@@ -98,8 +99,35 @@ export default function ArtistView({ artists }) {
             </div>
           </div>
 
+          {/* ── MODO SHUFFLE: mix de una sola banda ── */}
           {shuffle ? (
             <>
+              <div className="mix-action-bar mix-action-bar-top">
+                <a
+                  className="btn btn-spotify btn-pill"
+                  href={
+                    mix[0]
+                      ? getSpotifyUrl('track', mix[0].id)
+                      : getSpotifyUrl('artist', activeArtist.id)
+                  }
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <span className="btn-emoji">▶</span> Play on Spotify
+                </a>
+                <button
+                  className="btn btn-ghost btn-pill"
+                  onClick={handleNewShuffle}
+                  disabled={mixLoading || pool.length < 2}
+                >
+                  <span className="btn-emoji">🔀</span> New Shuffle
+                </button>
+                <span className="spacer" />
+                <span className="text-sm text-muted">
+                  {mix.length} track{mix.length === 1 ? '' : 's'}
+                </span>
+              </div>
+
               <div className="track-grid stagger">
                 {mixLoading
                   ? Array.from({ length: 8 }).map((_, i) => (
@@ -137,35 +165,25 @@ export default function ArtistView({ artists }) {
                   <span className="empty-state-sub">Try another artist</span>
                 </div>
               )}
-
-              <div className="mix-action-bar">
+            </>
+          ) : (
+            /* ── MODO CRONOLÓGICO: discografía ── */
+            <>
+              <div className="mix-action-bar mix-action-bar-top">
                 <a
-                  className="btn btn-spotify"
-                  href={
-                    mix[0]
-                      ? getSpotifyUrl('track', mix[0].id)
-                      : getSpotifyUrl('artist', activeArtist.id)
-                  }
+                  className="btn btn-spotify btn-pill"
+                  href={getSpotifyUrl('artist', activeArtist.id)}
                   target="_blank"
                   rel="noreferrer"
                 >
-                  ▶ Play on Spotify
+                  <span className="btn-emoji">▶</span> Open on Spotify
                 </a>
-                <button
-                  className="btn btn-ghost"
-                  onClick={handleNewShuffle}
-                  disabled={mixLoading || pool.length < 2}
-                >
-                  🔀 New Shuffle
-                </button>
                 <span className="spacer" />
                 <span className="text-sm text-muted">
-                  {mix.length} track{mix.length === 1 ? '' : 's'}
+                  {albums.length} release{albums.length === 1 ? '' : 's'}
                 </span>
               </div>
-            </>
-          ) : (
-            <>
+
               {albumsLoading ? (
                 <div className="albums-grid">
                   {Array.from({ length: 8 }).map((_, i) => (
@@ -176,7 +194,7 @@ export default function ArtistView({ artists }) {
                 </div>
               ) : (
                 <div className="albums-grid">
-                  {displayedAlbums.map(album => (
+                  {albums.map(album => (
                     <a
                       className="album-card"
                       key={album.id}
@@ -208,17 +226,6 @@ export default function ArtistView({ artists }) {
                   <span className="empty-state-text">No releases found</span>
                 </div>
               )}
-
-              <div className="artist-open-bar">
-                <a
-                  className="btn btn-spotify"
-                  href={getSpotifyUrl('artist', activeArtist.id)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Open on Spotify
-                </a>
-              </div>
             </>
           )}
         </>

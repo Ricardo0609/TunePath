@@ -73,8 +73,22 @@ export default function AddArtistsPanel({ artists, onApply, onClose }) {
                     <span>{artist.name}</span>
                     
                   </div>
+                  
                 ))}
               </div>
+               <div className="settings-footer">
+          <button className="btn btn-ghost" onClick={onClose} style={{ flex: 1 }}>
+            Cancelar
+          </button>
+          <button
+            className="btn btn-accent"
+            onClick={() => onApply(selected)}
+            disabled={!selected.length}
+            style={{ flex: 1 }}
+          >
+            Guardar
+          </button>
+        </div>
             </div>
           )}
           {selected.length > 0 && (
@@ -98,19 +112,7 @@ export default function AddArtistsPanel({ artists, onApply, onClose }) {
 
         </div>
 
-        <div className="settings-footer">
-          <button className="btn btn-ghost" onClick={onClose} style={{ flex: 1 }}>
-            Cancelar
-          </button>
-          <button
-            className="btn btn-accent"
-            onClick={() => onApply(selected)}
-            disabled={!selected.length}
-            style={{ flex: 1 }}
-          >
-            Guardar
-          </button>
-        </div>
+       
       </div>
     </>
   );

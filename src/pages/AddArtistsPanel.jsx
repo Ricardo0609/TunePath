@@ -57,25 +57,6 @@ export default function AddArtistsPanel({ artists, onApply, onClose }) {
             />
           </div>
 
-          {selected.length > 0 && (
-            <div className="settings-section">
-              <p className="settings-section-label">Seleccionados ({selected.length})</p>
-              <div className="settings-artist-list">
-                {selected.map(a => (
-                  <div
-                    key={a.id}
-                    className="settings-artist-item checked"
-                    onClick={() => toggleArtist(a)}
-                  >
-                    {getArtistImage(a) && <img src={getArtistImage(a)} alt="" />}
-                    <span>{a.name}</span>
-                   
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {loading && <p className="text-sm text-muted">Buscando…</p>}
 
           {results.length > 0 && (
@@ -96,6 +77,25 @@ export default function AddArtistsPanel({ artists, onApply, onClose }) {
               </div>
             </div>
           )}
+          {selected.length > 0 && (
+            <div className="settings-section">
+              <p className="settings-section-label">Tus artistas ({selected.length})</p>
+              <div className="settings-artist-list">
+                {selected.map(a => (
+                  <div
+                    key={a.id}
+                    className="settings-artist-item checked"
+                    onClick={() => toggleArtist(a)}
+                  >
+                    {getArtistImage(a) && <img src={getArtistImage(a)} alt="" />}
+                    <span>{a.name}</span>
+                   
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
         </div>
 
         <div className="settings-footer">

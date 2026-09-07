@@ -53,9 +53,30 @@ export default function MixView({
           value={playlistName}
           onChange={e => onPlaylistNameChange(e.target.value)}
         />
-        <div className="mix-top-bar-right">
-          <button className="btn-icon" onClick={onRefresh} disabled={loading} title="Refresh mix">🔄</button>
-        </div>
+      </div>
+
+      <div className="mix-action-bar mix-action-bar-top">
+        <button
+          className="btn btn-accent btn-pill"
+          onClick={onRefresh}
+          disabled={loading}
+        >
+          <span className="btn-emoji">🎛️</span> NEW MIX
+        </button>
+
+        <button
+          className="btn btn-spotify btn-pill"
+          onClick={onSave}
+          disabled={saving || !tracks.length}
+        >
+          {saving ? <span className="spinner" /> : <span className="btn-emoji">💿</span>}
+          {saving ? ' Guardando…' : ' Save to Spotify'}
+        </button>
+
+        <span className="spacer" />
+        <span className="text-sm text-muted">
+          {tracks.length} track{tracks.length === 1 ? '' : 's'}
+        </span>
       </div>
 
       <div className="track-grid stagger">
@@ -73,14 +94,6 @@ export default function MixView({
           <span className="empty-state-sub">Try refreshing or picking a few artists in Settings</span>
         </div>
       )}
-
-      <div className="mix-action-bar">
-        <button className="btn btn-spotify" onClick={onSave} disabled={saving || !tracks.length}>
-          {saving ? <span className="spinner" /> : '💿'} Save to Spotify
-        </button>
-        <span className="spacer" />
-        <span className="text-sm text-muted">{tracks.length} track{tracks.length === 1 ? '' : 's'}</span>
-      </div>
 
       <div className="discover-section">
         <div className="discover-header">

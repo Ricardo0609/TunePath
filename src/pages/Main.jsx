@@ -1,11 +1,11 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { logout } from '../utils/auth';
 import {
   getMe,
   buildMix,
-  getDiscoverTracks,
-  getArtistTracks,
+  getDiscoverArtists,
+  getArtistPoolLight,
   createSpotifyPlaylist,
   generatePlaylistName,
   pickRandom,
@@ -32,10 +32,10 @@ export default function Main() {
   const [user, setUser] = useState(() => readJSON('ws_user', null));
   const [artists] = useState(() => readJSON('ws_artists', []));
   const [activeIds, setActiveIds] = useState(() => artists.map(a => a.id));
-  const [addOpen, setAddOpen] = useState(false);
 
-  const [mode, setMode] = useState('mix'); // 'mix' | 'artist'
+  const [mode, setMode] = useState('mix');           // 'mix' | 'artist'
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
 
   const [songsPerArtist, setSongsPerArtist] = useState(3);
   const [totalSongs, setTotalSongs] = useState(20);
@@ -45,21 +45,25 @@ export default function Main() {
   const [playlistName, setPlaylistName] = useState('');
   const [mixLoading, setMixLoading] = useState(false);
 
-  const [discoverTracks, setDiscoverTracks] = useState([]);
+  const [discoverArtists, setDiscoverArtists] = useState([]);
   const [discoverLoading, setDiscoverLoading] = useState(false);
 
   const [history, setHistory] = useState(() => readJSON(HISTORY_KEY, []));
+
+  // Identifica cada generación de mix: si llega la respuesta de una
+  // ejecución vieja (StrictMode dispara los efectos dos veces en dev),
+  // se descarta en vez de pisar la buena.
+  const mixRunRef = useRef(0);
+  const discoverRunRef = useRef(0);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Redirect if there's no artist pool yet
+  // Sin artistas no hay nada que hacer aquí
   useEffect(() => {
-    if (!artists.length) {
-      navigate('/select', { replace: true });
-    }
+    if (!artists.length) navigate('/select', { replace: true });
   }, [artists, navigate]);
 
-  // Load the current user once
+  // Datos del usuario
   useEffect(() => {
     getMe()
       .then(u => {
@@ -79,6 +83,8 @@ export default function Main() {
   const generateMix = useCallback(async (opts = {}) => {
     const pool = opts.artists || activeArtists;
     if (!pool.length) return;
+
+    const runId = ++mixRunRef.current;
     setMixLoading(true);
     try {
       const tracks = await buildMix(pool, {
@@ -86,34 +92,40 @@ export default function Main() {
         totalSongs: opts.totalSongs ?? totalSongs,
         vibe: opts.vibe !== undefined ? opts.vibe : vibe,
       });
+      // Otra generación arrancó después: esta ya no vale
+      if (runId !== mixRunRef.current) return;
       setMixTracks(tracks);
       setPlaylistName(prev => prev || generatePlaylistName(pool));
     } catch (err) {
-      showToast(err.message || 'Could not build the mix', 'error');
+      if (runId !== mixRunRef.current) return;
+      showToast(err.message || 'No se pudo generar el mix', 'error');
     } finally {
-      setMixLoading(false);
+      if (runId === mixRunRef.current) setMixLoading(false);
     }
   }, [activeArtists, songsPerArtist, totalSongs, vibe]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const loadDiscover = useCallback(async () => {
     if (!activeArtists.length) return;
+    const runId = ++discoverRunRef.current;
     setDiscoverLoading(true);
     try {
-      const tracks = await getDiscoverTracks(activeArtists, 8);
-      setDiscoverTracks(tracks);
+      const found = await getDiscoverArtists(activeArtists, 5);
+      if (runId !== discoverRunRef.current) return;
+      setDiscoverArtists(found);
     } catch {
-      setDiscoverTracks([]);
+      if (runId === discoverRunRef.current) setDiscoverArtists([]);
     } finally {
-      setDiscoverLoading(false);
+      if (runId === discoverRunRef.current) setDiscoverLoading(false);
     }
   }, [activeArtists]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Initial mix + discover once artists are ready
+  // Mix inicial (Discover se carga sólo cuando el usuario lo pide).
+  // El ref evita que StrictMode lo dispare dos veces en desarrollo.
+  const didInitRef = useRef(false);
   useEffect(() => {
-    if (artists.length) {
-      generateMix();
-      loadDiscover();
-    }
+    if (!artists.length || didInitRef.current) return;
+    didInitRef.current = true;
+    generateMix();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [artists.length]);
 
@@ -121,26 +133,21 @@ export default function Main() {
     if (!activeArtists.length) return;
     const randomArtist = pickRandom(activeArtists, 1)[0];
     try {
-      const tracks = await getArtistTracks(randomArtist, { vibeId: vibe });
+      const catalog = await getArtistPoolLight(randomArtist);
       const existingIds = new Set(mixTracks.map(t => t.id));
-      const candidates = tracks.filter(t => !existingIds.has(t.id));
+      const candidates = catalog.filter(t => !existingIds.has(t.id));
       if (!candidates.length) return;
       const [newTrack] = pickRandom(candidates, 1);
       setMixTracks(prev => prev.map((t, i) => (i === index ? newTrack : t)));
     } catch {
-      showToast('Could not replace that track', 'error');
+      showToast('No se pudo reemplazar esa canción', 'error');
     }
-  }
-
-  function handleAddDiscoverTrack(track) {
-    setMixTracks(prev => [...prev, track]);
-    setDiscoverTracks(prev => prev.filter(t => t.id !== track.id));
   }
 
   async function handleSaveToSpotify() {
     if (!user || !mixTracks.length) return;
 
-    // Se abre la pestaña ANTES del await: si se abre después, el
+    // La pestaña se abre ANTES del await: si se abre después, el
     // navegador la bloquea por no venir de un clic directo.
     const win = window.open('', '_blank');
 
@@ -166,7 +173,7 @@ export default function Main() {
       showToast('Playlist guardada en Spotify 🎉');
     } catch (err) {
       if (win) win.close();
-      showToast(err.message || 'Could not save the playlist', 'error');
+      showToast(err.message || 'No se pudo guardar la playlist', 'error');
     } finally {
       setSaving(false);
     }
@@ -181,7 +188,6 @@ export default function Main() {
     setPlaylistName('');
     const pool = artists.filter(a => next.activeIds.includes(a.id));
     generateMix({ ...next, artists: pool });
-    loadDiscover();
   }
 
   function handleLogout() {
@@ -194,25 +200,37 @@ export default function Main() {
   return (
     <div className="app-layout">
       <header className="app-header">
-        <span className="header-logo">TUNE<span>PATH</span></span>
+        <span className="header-logo">WAVE<span>SET</span></span>
         <div className="header-right">
           {user && (
             <div className="header-user">
-              {user.images?.[0]?.url && <img className="header-avatar" src={user.images[0].url} alt="" />}
+              {user.images?.[0]?.url && (
+                <img className="header-avatar" src={user.images[0].url} alt="" />
+              )}
               <span className="header-username">{user.display_name}</span>
             </div>
           )}
           <button className="btn-icon sm" onClick={() => setSettingsOpen(true)} title="Settings">⚙️</button>
-          <button className="btn-icon sm" onClick={handleLogout} title="Log out">⏻</button>
+          <button className="btn-icon sm" onClick={handleLogout} title="Cerrar sesión">⏻</button>
         </div>
       </header>
 
       <div className="mode-tabs">
-        <button className={`mode-tab${mode === 'mix' ? ' active' : ''}`} onClick={() => setMode('mix')}>Mix</button>
-        <button className={`mode-tab${mode === 'artist' ? ' active' : ''}`} onClick={() => setMode('artist')}>Artist</button>
-                <button
+        <button
+          className={`mode-tab${mode === 'mix' ? ' active' : ''}`}
+          onClick={() => setMode('mix')}
+        >
+          MIX
+        </button>
+        <button
+          className={`mode-tab${mode === 'artist' ? ' active' : ''}`}
+          onClick={() => setMode('artist')}
+        >
+          ARTIST
+        </button>
+        <button
           className="mode-tab"
-         onClick={() => setAddOpen(true)}
+          onClick={() => setAddOpen(true)}
           title="Añadir más artistas"
           style={{ flex: '0 0 auto', paddingLeft: 18, paddingRight: 18 }}
         >
@@ -230,9 +248,9 @@ export default function Main() {
           onSave={handleSaveToSpotify}
           saving={saving}
           onReplaceTrack={handleReplaceTrack}
-          discoverTracks={discoverTracks}
+          discoverArtists={discoverArtists}
           discoverLoading={discoverLoading}
-          onAddDiscoverTrack={handleAddDiscoverTrack}
+          onRefreshDiscover={loadDiscover}
           history={history}
         />
       ) : (
@@ -250,6 +268,7 @@ export default function Main() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
+
       {addOpen && (
         <AddArtistsPanel
           artists={artists}

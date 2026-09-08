@@ -291,21 +291,133 @@ export function pickRandom(arr, count) {
   return copy.slice(0, count);
 }
 
+// ── Pool ligero para el Mix (varios artistas) ──
+//
+// getArtistPool (el del Shuffle) recorre toda la discografía: perfecto
+// para un solo artista, demasiado caro para un mix de 6+. Esta versión
+// usa sólo la primera página de álbumes y saca canciones de discos
+// DISTINTOS, que es lo que da variedad. Todo cacheado.
+
+const LIGHT_ALBUMS = 4;
+
+export async function getArtistPoolLight(artist) {
+  return _cached(`poolLight:${artist.id}`, async () => {
+    let albums = [];
+    try {
+      const data = await api(
+        `/artists/${artist.id}/albums?include_groups=album,single&limit=${ALBUM_LIMIT}`
+      );
+      albums = data.items || [];
+    } catch {
+      albums = [];
+    }
+
+    if (!albums.length) {
+      // Respaldo: búsqueda clásica
+      try {
+        return await getArtistTracks(artist);
+      } catch {
+        return [];
+      }
+    }
+
+    const chosen = pickRandom(albums, Math.min(LIGHT_ALBUMS, albums.length));
+    const tracks = [];
+
+    for (let i = 0; i < chosen.length; i++) {
+      const album = chosen[i];
+      try {
+        const data = await _cached(`albumTracks:${album.id}`, async () => {
+          const r = await api(`/albums/${album.id}/tracks`);
+          return r.items || [];
+        });
+        for (const t of data) {
+          if (!t.artists?.some(a => a.id === artist.id)) continue;
+          tracks.push({
+            ...t,
+            album: {
+              id: album.id,
+              name: album.name,
+              images: album.images,
+              release_date: album.release_date,
+            },
+          });
+        }
+      } catch {
+        // un álbum fallido no rompe el resto
+      }
+      if (i < chosen.length - 1) await sleep(250);
+    }
+
+    // Dedup por nombre normalizado (remasters, ediciones deluxe)
+    const seen = new Set();
+    return tracks.filter(t => {
+      const key = t.name.toLowerCase().replace(/\s*[\(\[].*?[\)\]]\s*/g, '').trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  });
+}
+
 // ── Mix de varios artistas ────────────────────
+
+// Cuántos artistas aportan a un mix. Más que esto dispara demasiadas
+// peticiones la primera vez (después todo sale de caché).
+const MAX_ARTISTS_PER_MIX = 6;
+
+// Memoria de canciones ya usadas, para no repetir entre mixes seguidos
+const RECENT_KEY = 'ws_recent_tracks';
+const RECENT_MAX = 120;
+
+function _readRecent() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(RECENT_KEY)) || []);
+  } catch {
+    return new Set();
+  }
+}
+
+function _saveRecent(ids) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(RECENT_KEY)) || [];
+    const next = [...ids, ...prev].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch { /* noop */ }
+}
+
+export function clearRecentTracks() {
+  try { localStorage.removeItem(RECENT_KEY); } catch { /* noop */ }
+}
 
 export async function buildMix(artists, { songsPerArtist = 3, totalSongs = 20, vibe = null } = {}) {
   if (!artists.length) return [];
 
-  const perArtist = await Promise.all(
-    artists.map(async artist => {
-      try {
-        const tracks = await getArtistTracks(artist, { vibeId: vibe });
-        return pickRandom(tracks, songsPerArtist);
-      } catch {
-        return [];
-      }
-    })
-  );
+  // Rotamos qué artistas participan: cada mix suena distinto
+  const participants = artists.length > MAX_ARTISTS_PER_MIX
+    ? pickRandom(artists, MAX_ARTISTS_PER_MIX)
+    : artists;
+
+  const recent = _readRecent();
+  const perArtist = [];
+
+  for (let i = 0; i < participants.length; i++) {
+    const artist = participants[i];
+    try {
+      const pool = await getArtistPoolLight(artist);
+      if (!pool.length) continue;
+
+      // Preferimos lo que no salió en mixes recientes
+      const fresh = pool.filter(t => !recent.has(t.id));
+      const source = fresh.length >= songsPerArtist ? fresh : pool;
+
+      // pickDiverse reparte entre álbumes distintos
+      perArtist.push(pickDiverse(source, songsPerArtist));
+    } catch {
+      // un artista fallido no rompe el mix
+    }
+    if (i < participants.length - 1) await sleep(200);
+  }
 
   let pool = perArtist.flat();
 
@@ -316,110 +428,190 @@ export async function buildMix(artists, { songsPerArtist = 3, totalSongs = 20, v
     return true;
   });
 
-  if (pool.length > totalSongs) {
-    pool = pickRandom(pool, totalSongs);
-  } else if (pool.length < totalSongs) {
-    const extra = perArtist.flat().filter(t => !pool.find(p => p.id === t.id));
-    pool = [...pool, ...pickRandom(extra, totalSongs - pool.length)];
-  }
+  // Ajustamos al total pidiendo, repartiendo entre álbumes
+  let final = pool.length > totalSongs
+    ? pickDiverse(pool, totalSongs)
+    : pickDiverse(pool, pool.length);
 
-  return pickRandom(pool, Math.min(totalSongs, pool.length));
+  _saveRecent(final.map(t => t.id));
+  return final;
 }
 
-// ── Discover (reemplaza al /recommendations deprecado) ──
+// ── Discover: bandas emergentes afines a tus gustos ──
+//
+// LIMITACIÓN REAL DE LA API (verificada, no supuesta):
+// En Development Mode los objetos de artista YA NO traen `genres`,
+// `followers` ni `popularity` — ni siquiera desde /artists/{id}.
+// Por eso:
+//   - No se puede leer el género de tus artistas → se DEDUCE preguntando
+//     a la búsqueda (`genre:"X" artist:"Nombre"` sólo devuelve resultados
+//     si ese artista está etiquetado con ese género). El perfil se guarda
+//     en localStorage para no repetir el proceso.
+//   - No se puede medir "seguidores" ni "está creciendo". El criterio de
+//     calidad que SÍ es verificable es exigir un mínimo de álbumes.
+//   - Lo "emergente" se aproxima con `tag:hipster`, que Spotify define
+//     como el 10% menos popular del catálogo.
+
+const GENRE_CANDIDATES = [
+  'rock', 'metal', 'hard rock', 'heavy metal', 'punk', 'grunge',
+  'alternative rock', 'indie rock', 'classic rock', 'pop', 'hip hop',
+  'electronic', 'jazz', 'blues', 'folk', 'r&b', 'reggaeton', 'latin',
+];
+
+const GENRE_PROFILE_KEY = 'ws_genre_profile';
+const MIN_ALBUMS = 2;
+
+function _readGenreProfile() {
+  try {
+    return JSON.parse(localStorage.getItem(GENRE_PROFILE_KEY)) || { genres: [], tested: [] };
+  } catch {
+    return { genres: [], tested: [] };
+  }
+}
+
+function _saveGenreProfile(profile) {
+  try {
+    localStorage.setItem(GENRE_PROFILE_KEY, JSON.stringify(profile));
+  } catch { /* storage lleno o bloqueado */ }
+}
 
 /**
- * Discover — artistas EMERGENTES relacionados a tus gustos.
- *
- * Estrategia (la API ya no ofrece /recommendations ni /related-artists):
- *   1. Toma los géneros de tus artistas seleccionados.
- *   2. Busca tracks de esos géneros priorizando lanzamientos recientes
- *      (filtro `year:`) y usando `tag:hipster`, que Spotify define como
- *      el 10% menos popular — buena señal de "todavía no explotó".
- *   3. Consulta los artistas encontrados en lote (1 sola petición) para
- *      leer sus `followers`, y se queda con los que están CRECIENDO:
- *      ni desconocidos totales ni ya masivos.
- *
- * Las búsquedas corren en serie con pausa para no saturar el rate limit.
+ * Deduce a qué géneros pertenecen tus artistas. Prueba un artista por
+ * llamada (para no saturar) y acumula el perfil en localStorage.
  */
+export async function buildGenreProfile(seedArtists, { onProgress } = {}) {
+  const profile = _readGenreProfile();
+  const pending = seedArtists.filter(a => !profile.tested.includes(a.id));
+  if (!pending.length) return profile.genres;
 
-// Rango de seguidores considerado "emergente pero con buenos números"
-const EMERGING_MIN_FOLLOWERS = 1000;
-const EMERGING_MAX_FOLLOWERS = 500000;
+  const artist = pending[0];
+  const found = [];
 
-export async function getDiscoverTracks(seedArtists, limit = 8) {
-  const genres = [...new Set(seedArtists.flatMap(a => a.genres || []))];
+  for (let i = 0; i < GENRE_CANDIDATES.length; i++) {
+    const g = GENRE_CANDIDATES[i];
+    if (onProgress) onProgress(i + 1, GENRE_CANDIDATES.length);
+    try {
+      const q = `genre:"${g}" artist:"${artist.name}"`;
+      const data = await api(`/search?q=${encodeURIComponent(q)}&type=artist&limit=1`);
+      const hit = data.artists?.items?.[0];
+      if (hit && hit.id === artist.id) found.push(g);
+    } catch {
+      // si falla una, seguimos con las demás
+    }
+    if (i < GENRE_CANDIDATES.length - 1) await sleep(220);
+  }
+
+  profile.tested.push(artist.id);
+  profile.genres = [...new Set([...profile.genres, ...found])];
+  _saveGenreProfile(profile);
+  return profile.genres;
+}
+
+export function getGenreProfile() {
+  return _readGenreProfile().genres;
+}
+
+export function resetGenreProfile() {
+  try { localStorage.removeItem(GENRE_PROFILE_KEY); } catch { /* noop */ }
+}
+
+/** Álbumes de un artista (primera página) — para validar trayectoria. */
+async function getArtistFirstAlbums(artistId) {
+  return _cached(`firstalbums:${artistId}`, async () => {
+    const data = await api(
+      `/artists/${artistId}/albums?include_groups=album&limit=${ALBUM_LIMIT}`
+    );
+    return data.items || [];
+  });
+}
+
+/**
+ * Devuelve bandas emergentes afines a tus géneros, cada una con su
+ * mejor álbum. Exige al menos MIN_ALBUMS álbumes de trayectoria.
+ */
+export async function getDiscoverArtists(seedArtists, limit = 5) {
+  let genres = getGenreProfile();
+
+  // Si aún no hay perfil, se deduce. Se intenta con varios artistas por
+  // si el primero no arroja ningún género (si no, quedaría marcado como
+  // analizado y el perfil nunca se llenaría).
+  let intentos = 0;
+  while (!genres.length && intentos < 3) {
+    const antes = getGenreProfile().length;
+    genres = await buildGenreProfile(seedArtists);
+    if (getGenreProfile().length === antes && genres.length === 0) {
+      intentos++;
+      continue;
+    }
+    intentos++;
+  }
   if (!genres.length) return [];
 
   const seedIds = new Set(seedArtists.map(a => a.id));
-  const year = new Date().getFullYear();
-  const sampledGenres = pickRandom(genres, Math.min(2, genres.length));
+  const sampled = pickRandom(genres, Math.min(2, genres.length));
 
-  // Dos variantes por género: recientes, y "hipster" (baja popularidad)
-  const queries = [];
-  for (const g of sampledGenres) {
-    queries.push(`genre:"${g}" year:${year - 2}-${year}`);
-    queries.push(`genre:"${g}" tag:hipster`);
-  }
+  // Búsqueda de álbumes poco conocidos en tus géneros
+  // IMPORTANTE: `genre:"X" tag:hipster` devuelve 0 resultados (verificado).
+  // El filtro genre: no se puede combinar con tag:, así que el género va
+  // como texto libre junto al tag.
+  const queries = sampled.flatMap(g => [
+    `tag:hipster ${g}`,
+    `tag:new ${g}`,
+  ]);
 
-  const tasks = queries.map(q => () =>
-    _cached(`discover:${q}`, async () => {
-      const data = await api(
-        `/search?q=${encodeURIComponent(q)}&type=track&limit=${SEARCH_LIMIT_MAX}`
-      );
-      return data.tracks?.items || [];
-    })
-  );
+  const candidates = new Map(); // artistId -> artist resumido
 
-  const results = await runSerial(tasks, 250);
-  let tracks = results.filter(Boolean).flat();
+  for (let i = 0; i < queries.length; i++) {
+    try {
+      const q = queries[i];
+      const items = await _cached(`discAlbum:${q}`, async () => {
+        const r = await api(`/search?q=${encodeURIComponent(q)}&type=album&limit=${SEARCH_LIMIT_MAX}`);
+        return r.albums?.items || [];
+      });
 
-  // Fuera lo que ya escuchas
-  tracks = tracks.filter(t => !t.artists.some(a => seedIds.has(a.id)));
-  if (!tracks.length) return [];
+      for (const al of items) {
+        // Fuera recopilatorios: no representan a una banda concreta
+        if (al.album_type === 'compilation') continue;
+        if (al.artists?.length > 1) continue;
 
-  // Dedup por track y quedarnos con un track por artista
-  const seenTrack = new Set();
-  const byArtist = new Map();
-  for (const t of tracks) {
-    if (seenTrack.has(t.id)) continue;
-    seenTrack.add(t.id);
-    const aid = t.artists[0]?.id;
-    if (aid && !byArtist.has(aid)) byArtist.set(aid, t);
-  }
+        const a = al.artists?.[0];
+        if (!a?.id || seedIds.has(a.id) || candidates.has(a.id)) continue;
 
-  // Consultar followers en lote (máx 50 ids por petición)
-  const artistIds = [...byArtist.keys()].slice(0, 50);
-  let emerging = [...byArtist.values()];
+        const n = a.name.toLowerCase();
+        if (n.includes('varios artistas') || n.includes('various artists')) continue;
 
-  try {
-    const data = await api(`/artists?ids=${artistIds.join(',')}`);
-    const info = new Map((data.artists || []).filter(Boolean).map(a => [a.id, a]));
-
-    const scored = [];
-    for (const [aid, track] of byArtist) {
-      const a = info.get(aid);
-      if (!a) continue;
-      const followers = a.followers?.total;
-
-      // Si followers no viene, no descartamos (la API puede omitirlo)
-      if (typeof followers === 'number') {
-        if (followers < EMERGING_MIN_FOLLOWERS) continue;
-        if (followers > EMERGING_MAX_FOLLOWERS) continue;
+        candidates.set(a.id, a);
       }
-      scored.push({ track, followers: followers ?? 0 });
+    } catch {
+      // una búsqueda fallida no rompe el resto
     }
-
-    if (scored.length) {
-      // Más seguidores primero dentro del rango = "creciendo con buenos números"
-      scored.sort((x, y) => y.followers - x.followers);
-      emerging = scored.map(s => s.track);
-    }
-  } catch {
-    // Si falla el lote, seguimos con lo que tengamos sin filtrar
+    if (candidates.size >= limit * 3) break;
+    if (i < queries.length - 1) await sleep(250);
   }
 
-  return emerging.slice(0, limit);
+  if (!candidates.size) return [];
+
+  // Validamos trayectoria (>= MIN_ALBUMS) y tomamos su mejor álbum
+  const shortlist = pickRandom([...candidates.values()], Math.min(limit * 2, candidates.size));
+  const out = [];
+
+  for (let i = 0; i < shortlist.length && out.length < limit; i++) {
+    const artist = shortlist[i];
+    try {
+      const albums = await getArtistFirstAlbums(artist.id);
+      if (albums.length >= MIN_ALBUMS) {
+        const best = [...albums].sort(
+          (a, b) => new Date(b.release_date) - new Date(a.release_date)
+        )[0];
+        out.push({ artist, album: best, albumCount: albums.length });
+      }
+    } catch {
+      // si falla, lo omitimos
+    }
+    if (i < shortlist.length - 1 && out.length < limit) await sleep(250);
+  }
+
+  return out;
 }
 
 // ── Crear playlist ────────────────────────────

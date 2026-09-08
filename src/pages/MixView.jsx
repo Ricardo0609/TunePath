@@ -1,4 +1,4 @@
-import { getTrackImage } from '../utils/spotify';
+import { getTrackImage, getAlbumImage, getArtistImage, getSpotifyUrl } from '../utils/spotify';
 
 function TrackCard({ track, onReplace }) {
   return (
@@ -30,7 +30,7 @@ function SkeletonCard() {
 }
 
 export default function MixView({
-  tracks,
+  tracks = [],
   loading,
   playlistName,
   onPlaylistNameChange,
@@ -38,11 +38,10 @@ export default function MixView({
   onSave,
   saving,
   onReplaceTrack,
-  discoverTracks,
+  discoverArtists = [],
   discoverLoading,
-  onAddDiscoverTrack,
   onRefreshDiscover,
-  history,
+  history = [],
 }) {
   return (
     <div className="mix-view">
@@ -61,7 +60,7 @@ export default function MixView({
           onClick={onRefresh}
           disabled={loading}
         >
-          <span className="btn-emoji">🎛️</span> NEW MIX
+          <span className="btn-emoji">🎲</span> NEW MIX
         </button>
 
         <button
@@ -99,36 +98,65 @@ export default function MixView({
         <div className="discover-header">
           <span className="discover-title">🔭 <span>Discover</span></span>
           <button
-            className="btn-icon sm"
+            className="btn btn-ghost btn-pill"
             onClick={onRefreshDiscover}
             disabled={discoverLoading}
-            title="Buscar otras bandas emergentes"
           >
-            🔄
+            {discoverLoading ? <span className="spinner" /> : '🔀'} Descubrir bandas
           </button>
         </div>
-        <div className="discover-list">
-          {discoverLoading && <p className="text-sm text-muted">Buscando bandas emergentes…</p>}
-          {!discoverLoading && !discoverTracks.length && (
-            <p className="text-sm text-muted">
-              No hay sugerencias ahora. Prueba con el botón de refrescar o selecciona otros artistas.
-            </p>
-          )}
-          {discoverTracks.map(track => (
-            <div className="discover-item" key={track.id}>
-              {getTrackImage(track) ? (
-                <img className="discover-item-img" src={getTrackImage(track)} alt="" />
-              ) : (
-                <div className="discover-item-img skeleton" />
-              )}
-              <div className="discover-item-info">
-                <p className="discover-item-name">{track.name}</p>
-                <p className="discover-item-artist">{track.artists?.map(a => a.name).join(', ')}</p>
+
+        {discoverLoading && (
+          <p className="text-sm text-muted" style={{ marginBottom: 12 }}>
+            Buscando bandas emergentes en tus géneros… la primera vez tarda un poco más.
+          </p>
+        )}
+
+        {discoverLoading && (
+          <div className="albums-grid">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div className="album-card" key={i}>
+                <div className="skeleton skeleton-img" />
               </div>
-              <span className="discover-add-btn" onClick={() => onAddDiscoverTrack(track)} title="Add to mix">+</span>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
+
+        {!discoverLoading && !discoverArtists.length && (
+          <p className="text-sm text-muted">
+            Toca “Descubrir bandas” para ver artistas emergentes de tus géneros.
+          </p>
+        )}
+
+        {!discoverLoading && discoverArtists.length > 0 && (
+          <div className="albums-grid">
+            {discoverArtists.map(({ artist, album }) => (
+              <a
+                className="album-card"
+                key={artist.id}
+                href={getSpotifyUrl('album', album.id)}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {getAlbumImage(album) ? (
+                  <img className="album-card-img" src={getAlbumImage(album)} alt="" />
+                ) : (
+                  <div className="album-card-img skeleton" />
+                )}
+                <div className="album-card-overlay">
+                  <span className="album-play-btn">▶</span>
+                </div>
+                <div className="album-card-info">
+                  <span className="album-card-type">{artist.name}</span>
+                  <p className="album-card-name">{album.name}</p>
+                  <p className="album-card-meta">
+                    {album.release_date?.slice(0, 4)}
+                  </p>
+                </div>
+              </a>
+            ))}
+          </div>
+        )}
       </div>
 
       {history.length > 0 && (

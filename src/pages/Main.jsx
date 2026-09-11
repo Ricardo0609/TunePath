@@ -241,14 +241,15 @@ export default function Main() {
         >
           ARTIST
         </button>
-        <button
-          className="mode-tab"
-          onClick={() => setAddOpen(true)}
-          title="Añadir más artistas"
-          style={{ flex: '0 0 auto', paddingLeft: 18, paddingRight: 18 }}
-        >
-          +
-        </button>
+                {mode === 'artist' && (
+          <button
+            className="mode-tab tab-add"
+            onClick={() => setAddOpen(true)}
+            title="Añadir más artistas"
+          >
+            +
+          </button>
+        )}
       </div>
 
       {mode === 'mix' ? (

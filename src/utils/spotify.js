@@ -141,66 +141,87 @@ export async function getArtistTracks(artist, { vibeId = null, term = null, limi
 // así que se piden los álbumes de uno en uno, en serie y con pausa.
 // Cada álbum trae su tracklist completo (~12 canciones), por lo que con
 // pocos álbumes ya se junta un pool amplio y bien repartido.
-const MAX_ALBUMS_FOR_POOL = 6;
+// Cuántos álbumes se muestrean para el pool de un artista. Cada uno
+// aporta ~12 canciones, así que con pocos ya se llega al mínimo.
+const MAX_ALBUMS_FOR_POOL = 8;
 
-export async function getArtistPool(artist, { minTracks = 15 } = {}) {
+/** Tracklist de un álbum. Cacheado y compartido con getArtistPoolLight. */
+async function getAlbumTracks(album, artistId) {
+  const items = await _cached(`albumTracks:${album.id}`, async () => {
+    const r = await api(`/albums/${album.id}/tracks`);
+    return r.items || [];
+  });
+
+  return items
+    .filter(t => !artistId || t.artists?.some(a => a.id === artistId))
+    .map(t => ({
+      ...t,
+      album: {
+        id: album.id,
+        name: album.name,
+        images: album.images,
+        release_date: album.release_date,
+      },
+    }));
+}
+
+/** Quita duplicados por nombre normalizado (remasters, deluxe, en vivo). */
+function dedupByName(tracks) {
+  const seen = new Set();
+  return tracks.filter(t => {
+    const key = t.name.toLowerCase().replace(/\s*[\(\[].*?[\)\]]\s*/g, '').trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export async function getArtistPool(artist, { minTracks = 10 } = {}) {
   return _cached(`pool:${artist.id}`, async () => {
     let albums = [];
     try {
-      albums = await getArtistAlbums(artist.id);
+      // 15 álbumes = 3 peticiones de discografía (y queda cacheada)
+      albums = await getArtistAlbums(artist.id, 15);
     } catch {
       albums = [];
     }
 
     if (albums.length) {
-      // Muestreo aleatorio para que cada artista no dé siempre los mismos discos
-      const chosen = albums.length > MAX_ALBUMS_FOR_POOL
-        ? pickRandom(albums, MAX_ALBUMS_FOR_POOL)
-        : albums;
-
+      // Orden aleatorio para que no salgan siempre los mismos discos
+      const queue = pickRandom(albums, albums.length);
       const tracks = [];
+      let usados = 0;
 
-      for (let i = 0; i < chosen.length; i++) {
-        const album = chosen[i];
+      for (let i = 0; i < queue.length && usados < MAX_ALBUMS_FOR_POOL; i++) {
         try {
-          const data = await api(`/albums/${album.id}/tracks`);
-          for (const t of data.items || []) {
-            if (!t.artists?.some(a => a.id === artist.id)) continue;
-            // El endpoint de tracks no trae la portada: la tomamos del
-            // álbum que ya teníamos de la discografía.
-            tracks.push({
-              ...t,
-              album: {
-                id: album.id,
-                name: album.name,
-                images: album.images,
-                release_date: album.release_date,
-              },
-            });
+          const t = await getAlbumTracks(queue[i], artist.id);
+          if (t.length) {
+            tracks.push(...t);
+            usados++;
           }
         } catch {
           // un álbum fallido no rompe el resto
         }
-        if (i < chosen.length - 1) await sleep(250);
+
+        // Seguimos pidiendo hasta cubrir el mínimo con holgura,
+        // repartido entre al menos 5 discos distintos
+        if (tracks.length >= minTracks * 2 && usados >= 5) break;
+
+        if (i < queue.length - 1 && usados < MAX_ALBUMS_FOR_POOL) await sleep(250);
       }
 
-      // Dedup por nombre normalizado: evita que remasters y ediciones
-      // deluxe metan la misma canción varias veces
-      const seenName = new Set();
-      const unique = tracks.filter(t => {
-        const key = t.name.toLowerCase().replace(/\s*[\(\[].*?[\)\]]\s*/g, '').trim();
-        if (seenName.has(key)) return false;
-        seenName.add(key);
-        return true;
-      });
-
-      if (unique.length) return unique;
+      // OJO: aquí NO se deduplica por nombre. Los discos en vivo y
+      // recopilatorios repiten títulos de los de estudio, y deduplicar
+      // aquí borraría álbumes enteros del pool, concentrando todo en
+      // dos o tres discos. El filtrado de títulos repetidos se hace en
+      // pickDiverse, DESPUÉS de repartir entre álbumes distintos.
+      if (tracks.length) return tracks;
     }
 
-    // Respaldo: si la discografía falla, volvemos a /search
+    // Respaldo: si la discografía falla por completo, usamos búsqueda
     const seen = new Set();
     const fallback = [];
-    for (const term of [null, 'live', 'acoustic']) {
+    for (const term of [null, 'live', 'acoustic', 'best']) {
       try {
         const tracks = await getArtistTracks(artist, { term });
         for (const t of tracks) {
@@ -231,20 +252,28 @@ export function pickDiverse(tracks, count) {
   const groups = [...byAlbum.values()].map(g => [...g].sort(() => Math.random() - 0.5));
   groups.sort(() => Math.random() - 0.5);
 
+  const norm = n => n.toLowerCase().replace(/\s*[\(\[].*?[\)\]]\s*/g, '').trim();
+  const usedNames = new Set();
   const out = [];
+
+  // Rondas: una canción por álbum en cada vuelta. Los títulos repetidos
+  // (versiones en vivo, remasters) se saltan aquí, ya habiendo repartido.
   let round = 0;
-  while (out.length < count) {
-    let added = false;
+  const maxRounds = Math.max(...groups.map(g => g.length), 0);
+
+  while (out.length < count && round < maxRounds) {
     for (const g of groups) {
-      if (g[round]) {
-        out.push(g[round]);
-        added = true;
-        if (out.length >= count) break;
-      }
+      if (out.length >= count) break;
+      const t = g[round];
+      if (!t) continue;
+      const key = norm(t.name);
+      if (usedNames.has(key)) continue;
+      usedNames.add(key);
+      out.push(t);
     }
-    if (!added) break; // ya no queda nada en ninguna ronda
     round++;
   }
+
   return out;
 }
 
@@ -270,10 +299,19 @@ async function _fetchArtistAlbums(artistId, maxAlbums) {
     }
   }
 
-  // Dedup por nombre normalizado (Spotify devuelve variantes regionales)
+  // Dedup por nombre normalizado. Importante: se quitan los sufijos entre
+  // paréntesis o corchetes, para que "Metallica", "Metallica (Remastered
+  // 2021)" y "Metallica (Deluxe Box Set)" cuenten como UN solo álbum.
+  // Sin esto, el pool se llena de versiones del mismo disco y la variedad
+  // real se desploma al deduplicar canciones más adelante.
   const seen = new Set();
   const unique = all.filter(album => {
-    const key = album.name.toLowerCase().replace(/\s+/g, ' ').trim();
+    const key = album.name
+      .toLowerCase()
+      .replace(/\s*[\(\[].*?[\)\]]\s*/g, ' ')
+      .replace(/\s*-\s*(remaster|remastered|deluxe|live|edition).*$/i, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -327,22 +365,7 @@ export async function getArtistPoolLight(artist) {
     for (let i = 0; i < chosen.length; i++) {
       const album = chosen[i];
       try {
-        const data = await _cached(`albumTracks:${album.id}`, async () => {
-          const r = await api(`/albums/${album.id}/tracks`);
-          return r.items || [];
-        });
-        for (const t of data) {
-          if (!t.artists?.some(a => a.id === artist.id)) continue;
-          tracks.push({
-            ...t,
-            album: {
-              id: album.id,
-              name: album.name,
-              images: album.images,
-              release_date: album.release_date,
-            },
-          });
-        }
+        tracks.push(...(await getAlbumTracks(album, artist.id)));
       } catch {
         // un álbum fallido no rompe el resto
       }
@@ -393,10 +416,24 @@ export function clearRecentTracks() {
 export async function buildMix(artists, { songsPerArtist = 3, totalSongs = 20, vibe = null } = {}) {
   if (!artists.length) return [];
 
-  // Rotamos qué artistas participan: cada mix suena distinto
-  const participants = artists.length > MAX_ARTISTS_PER_MIX
-    ? pickRandom(artists, MAX_ARTISTS_PER_MIX)
+  // Cuántos artistas hacen falta para poder llegar al total pedido.
+  // Sin esto, pedir 50 canciones con 6 artistas × 3 daba sólo 18 y el
+  // contador quedaba muy por debajo de lo solicitado.
+  const needed = Math.ceil(totalSongs / songsPerArtist);
+  const cupo = Math.min(
+    artists.length,
+    Math.max(MAX_ARTISTS_PER_MIX, needed)
+  );
+
+  const participants = artists.length > cupo
+    ? pickRandom(artists, cupo)
     : artists;
+
+  // Si aun con todos los artistas no alcanza, cada uno aporta más
+  const perArtistTarget = Math.max(
+    songsPerArtist,
+    Math.ceil(totalSongs / participants.length)
+  );
 
   const recent = _readRecent();
   const perArtist = [];
@@ -409,10 +446,10 @@ export async function buildMix(artists, { songsPerArtist = 3, totalSongs = 20, v
 
       // Preferimos lo que no salió en mixes recientes
       const fresh = pool.filter(t => !recent.has(t.id));
-      const source = fresh.length >= songsPerArtist ? fresh : pool;
+      const source = fresh.length >= perArtistTarget ? fresh : pool;
 
       // pickDiverse reparte entre álbumes distintos
-      perArtist.push(pickDiverse(source, songsPerArtist));
+      perArtist.push(pickDiverse(source, perArtistTarget));
     } catch {
       // un artista fallido no rompe el mix
     }

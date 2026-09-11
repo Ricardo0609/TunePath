@@ -17,6 +17,7 @@ import AddArtistsPanel from './AddArtistsPanel';
 
 const HISTORY_KEY = 'ws_history';
 const MAX_HISTORY = 10;
+const PREFS_KEY = 'ws_mix_prefs';
 
 function readJSON(key, fallback) {
   try {
@@ -37,9 +38,12 @@ export default function Main() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
 
-  const [songsPerArtist, setSongsPerArtist] = useState(3);
-  const [totalSongs, setTotalSongs] = useState(20);
-  const [vibe, setVibe] = useState(null);
+  // Preferencias del mix: se guardan y sobreviven a recargas, hasta que
+  // el usuario las cambie manualmente en Settings.
+  const savedPrefs = readJSON(PREFS_KEY, {});
+  const [songsPerArtist, setSongsPerArtist] = useState(savedPrefs.songsPerArtist ?? 3);
+  const [totalSongs, setTotalSongs] = useState(savedPrefs.totalSongs ?? 20);
+  const [vibe, setVibe] = useState(savedPrefs.vibe ?? null);
 
   const [mixTracks, setMixTracks] = useState([]);
   const [playlistName, setPlaylistName] = useState('');
@@ -184,6 +188,15 @@ export default function Main() {
     setTotalSongs(next.totalSongs);
     setVibe(next.vibe);
     setActiveIds(next.activeIds);
+
+    // Persistimos para que sigan igual la próxima vez que abras la app
+    try {
+      localStorage.setItem(PREFS_KEY, JSON.stringify({
+        songsPerArtist: next.songsPerArtist,
+        totalSongs: next.totalSongs,
+        vibe: next.vibe,
+      }));
+    } catch { /* storage lleno o bloqueado */ }
     setSettingsOpen(false);
     setPlaylistName('');
     const pool = artists.filter(a => next.activeIds.includes(a.id));

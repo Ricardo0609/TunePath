@@ -1244,3 +1244,30 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 700;
 }
 .preset-input:focus { outline: none; border-color: var(--accent); }
+
+/* ── Botón + que emerge desde el tab de Artist ── */
+@keyframes emergeFromTab {
+  from {
+    opacity: 0;
+    max-width: 0;
+    padding-left: 0;
+    padding-right: 0;
+    transform: translateX(-14px) scale(0.7);
+  }
+  to {
+    opacity: 1;
+    max-width: 60px;
+    padding-left: 18px;
+    padding-right: 18px;
+    transform: translateX(0) scale(1);
+  }
+}
+.tab-add {
+  flex: 0 0 auto;
+  transform-origin: left center;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 18px;
+  font-weight: 700;
+  animation: emergeFromTab 0.28s var(--ease) both;
+}

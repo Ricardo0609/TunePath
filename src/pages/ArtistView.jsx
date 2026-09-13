@@ -1,15 +1,15 @@
 import { useEffect, useState } from 'react';
 import {
   getArtistAlbums,
-  getArtistPool,
+  getArtistAlbumMap,
+  pickOnePerAlbum,
   getArtistImage,
   getAlbumImage,
   getTrackImage,
   getSpotifyUrl,
-  pickDiverse,
 } from '../utils/spotify';
 
-const MIX_SIZE = 15;
+const MIX_SIZE = 12; // una canción por álbum, en rondas
 
 export default function ArtistView({ artists }) {
   const [activeId, setActiveId] = useState(artists[0]?.id || null);
@@ -48,20 +48,21 @@ export default function ArtistView({ artists }) {
     if (!activeArtist || !shuffle) return;
     let cancelled = false;
     setMixLoading(true);
-    getArtistPool(activeArtist, { minTracks: MIX_SIZE })
-      .then(unique => {
+    getArtistAlbumMap(activeArtist, { count: MIX_SIZE })
+      .then(map => {
         if (cancelled) return;
-        setPool(unique);
-        setMix(pickDiverse(unique, Math.min(MIX_SIZE, unique.length)));
+        setPool(map);
+        setMix(pickOnePerAlbum(map, MIX_SIZE));
       })
       .catch(() => { if (!cancelled) setPool([]); })
       .finally(() => { if (!cancelled) setMixLoading(false); });
     return () => { cancelled = true; };
   }, [activeArtist?.id, shuffle]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // No vuelve a pedir nada: re-baraja sobre los álbumes ya descargados
   function handleNewShuffle() {
     if (!pool.length) return;
-    setMix(pickDiverse(pool, Math.min(MIX_SIZE, pool.length)));
+    setMix(pickOnePerAlbum(pool, MIX_SIZE));
   }
 
   return (

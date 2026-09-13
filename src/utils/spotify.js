@@ -664,6 +664,43 @@ async function getArtistFirstAlbums(artistId) {
  * Devuelve bandas emergentes afines a tus géneros, cada una con su
  * mejor álbum. Exige al menos MIN_ALBUMS álbumes de trayectoria.
  */
+/**
+ * Heurística contra "granjas de contenido" (mucho de lo generado con IA).
+ *
+ * IMPORTANTE: esto NO es detección de IA. Spotify no expone ningún dato
+ * de eso en la Web API — sus "AI Credits" (beta, abril 2026) son
+ * opcionales, los declara la distribuidora y sólo se ven en la app móvil.
+ * Además, que un tema no tenga ese crédito no significa que sea humano.
+ *
+ * Lo que sí se puede observar es el COMPORTAMIENTO de publicación. Un
+ * proyecto real suele tener trayectoria repartida en el tiempo; las
+ * granjas de contenido suben muchísimo material de golpe y luego nada.
+ */
+const MIN_YEARS_SPAN = 1; // al menos dos años distintos de publicación
+
+function looksLikeRealArtist(artist, albums) {
+  if (!albums || albums.length < MIN_ALBUMS) return false;
+
+  const years = albums
+    .map(a => parseInt(a.release_date?.slice(0, 4), 10))
+    .filter(Boolean);
+
+  if (years.length < MIN_ALBUMS) return false;
+
+  // Trayectoria repartida en el tiempo, no todo publicado de golpe
+  const span = Math.max(...years) - Math.min(...years);
+  if (span < MIN_YEARS_SPAN) return false;
+
+  // Nombres sospechosos de auto-generación
+  const name = (artist.name || '').trim();
+  if (!name) return false;
+  if (name.length > 40) return false;              // títulos-descripción
+  if (/\d{4,}/.test(name)) return false;           // "Artist 12345"
+  if ((name.match(/\s/g) || []).length > 6) return false; // frase entera
+
+  return true;
+}
+
 export async function getDiscoverArtists(seedArtists, limit = 5) {
   let genres = getGenreProfile();
 
@@ -689,9 +726,13 @@ export async function getDiscoverArtists(seedArtists, limit = 5) {
   // IMPORTANTE: `genre:"X" tag:hipster` devuelve 0 resultados (verificado).
   // El filtro genre: no se puede combinar con tag:, así que el género va
   // como texto libre junto al tag.
+  // OJO: NO se usa `tag:hipster`. Ese filtro devuelve el 10% menos
+  // popular del catálogo, que es precisamente donde se concentra el
+  // contenido generado masivamente con IA. Sesgaba los resultados justo
+  // hacia lo que queremos evitar.
   const queries = sampled.flatMap(g => [
-    `tag:hipster ${g}`,
     `tag:new ${g}`,
+    `${g}`,
   ]);
 
   const candidates = new Map(); // artistId -> artist resumido
@@ -734,7 +775,7 @@ export async function getDiscoverArtists(seedArtists, limit = 5) {
     const artist = shortlist[i];
     try {
       const albums = await getArtistFirstAlbums(artist.id);
-      if (albums.length >= MIN_ALBUMS) {
+      if (looksLikeRealArtist(artist, albums)) {
         const best = [...albums].sort(
           (a, b) => new Date(b.release_date) - new Date(a.release_date)
         )[0];

@@ -235,6 +235,104 @@ export async function getArtistPool(artist, { minTracks = 10 } = {}) {
   });
 }
 
+// ── Shuffle por artista: una canción por álbum ──
+//
+// En vez de descargar el tracklist completo de unos pocos discos y
+// esperar que el reparto dé variedad, aquí se recorren los álbumes en
+// orden aleatorio y se toma UNA canción de cada uno. Si hacen falta más
+// canciones que álbumes disponibles, se vuelve al primero y se saca otra.
+// Así la variedad está garantizada por construcción, no por azar.
+//
+// Coste: una petición por álbum, pero cacheadas y compartidas con el mix.
+// Si ya visitaste Chronological, la discografía sale de caché (0 peticiones).
+
+/**
+ * Devuelve [{ album, tracks }] en orden aleatorio, pidiendo sólo los
+ * álbumes necesarios para cubrir `count` canciones.
+ */
+export async function getArtistAlbumMap(artist, { count = 10, maxAlbums = 14 } = {}) {
+  let albums = [];
+  try {
+    albums = await getArtistAlbums(artist.id, 25);
+  } catch {
+    albums = [];
+  }
+  if (!albums.length) return [];
+
+  // Orden aleatorio: cada visita al artista propone discos distintos
+  const queue = pickRandom(albums, Math.min(maxAlbums, albums.length));
+
+  const map = [];
+  for (let i = 0; i < queue.length; i++) {
+    // Con álbumes suficientes para cubrir el total, dejamos de pedir
+    if (map.length >= count) break;
+
+    try {
+      const tracks = await getAlbumTracks(queue[i], artist.id);
+      if (tracks.length) map.push({ album: queue[i], tracks });
+    } catch {
+      // un álbum fallido no rompe el resto
+    }
+
+    if (i < queue.length - 1 && map.length < count) await sleep(220);
+  }
+
+  return map;
+}
+
+/**
+ * Toma una canción por álbum, en rondas. Si se acaban los álbumes y aún
+ * faltan canciones, vuelve al primero. Evita repetir títulos.
+ */
+export function pickOnePerAlbum(albumMap, count) {
+  if (!albumMap.length) return [];
+
+  // Baraja el orden de los discos y las canciones dentro de cada uno
+  const groups = pickRandom(albumMap, albumMap.length).map(g => ({
+    album: g.album,
+    tracks: pickRandom(g.tracks, g.tracks.length),
+  }));
+
+  const norm = n => n.toLowerCase().replace(/\s*[\(\[].*?[\)\]]\s*/g, '').trim();
+  const usedNames = new Set();
+  const out = [];
+  const cursor = new Array(groups.length).fill(0);
+
+  let vueltas = 0;
+  const maxVueltas = Math.max(...groups.map(g => g.tracks.length), 1);
+
+  while (out.length < count && vueltas < maxVueltas) {
+    let avanzó = false;
+
+    for (let i = 0; i < groups.length && out.length < count; i++) {
+      const g = groups[i];
+      // Busca en este álbum la siguiente canción con título no repetido
+      while (cursor[i] < g.tracks.length) {
+        const t = g.tracks[cursor[i]++];
+        const key = norm(t.name);
+        if (usedNames.has(key)) continue;
+        usedNames.add(key);
+        out.push({
+          ...t,
+          album: {
+            id: g.album.id,
+            name: g.album.name,
+            images: g.album.images,
+            release_date: g.album.release_date,
+          },
+        });
+        avanzó = true;
+        break;
+      }
+    }
+
+    if (!avanzó) break; // ya no queda nada nuevo en ningún álbum
+    vueltas++;
+  }
+
+  return out;
+}
+
 /**
  * Elige `count` canciones repartidas entre álbumes distintos.
  * Va tomando una de cada álbum por ronda, así el resultado no queda

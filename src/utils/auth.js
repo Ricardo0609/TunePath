@@ -119,6 +119,9 @@ export async function getToken() {
 export const isLoggedIn = () => !!localStorage.getItem('ws_access_token');
 
 export function logout() {
-  const keys = ['ws_access_token', 'ws_refresh_token', 'ws_expires_at', 'ws_user', 'ws_artists', 'ws_history'];
+  // Sólo se borra la sesión. Los artistas, el historial y las
+  // preferencias son datos del usuario y sobreviven al cierre de sesión:
+  // así, al volver a entrar con Spotify, todo sigue como lo dejaste.
+  const keys = ['ws_access_token', 'ws_refresh_token', 'ws_expires_at', 'ws_user'];
   keys.forEach(k => localStorage.removeItem(k));
 }

@@ -1271,3 +1271,17 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 700;
   animation: emergeFromTab 0.28s var(--ease) both;
 }
+.tab-install { flex: 0 0 auto; font-size: 12px; white-space: nowrap; }
+.install-help {
+  position: fixed; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(380px, 90vw);
+  background: var(--surface);
+  border: 1px solid var(--border-2);
+  border-radius: 16px;
+  padding: 24px;
+  z-index: 300;
+}
+.install-help h3 { margin: 0 0 16px; font-size: 18px; }
+.install-help ol { margin: 0 0 20px; padding-left: 20px; line-height: 1.8; }
+.install-help li { margin-bottom: 6px; }

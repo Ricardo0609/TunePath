@@ -14,6 +14,7 @@ import MixView from './MixView';
 import ArtistView from './ArtistView';
 import SettingsPanel from './SettingsPanel';
 import AddArtistsPanel from './AddArtistsPanel';
+import InstallButton from './InstallButton';
 
 const HISTORY_KEY = 'ws_history';
 const MAX_HISTORY = 10;
@@ -113,7 +114,7 @@ export default function Main() {
     const runId = ++discoverRunRef.current;
     setDiscoverLoading(true);
     try {
-      const found = await getDiscoverArtists(activeArtists, 5);
+      const found = await getDiscoverArtists(activeArtists, 6);
       if (runId !== discoverRunRef.current) return;
       setDiscoverArtists(found);
     } catch {
@@ -213,7 +214,7 @@ export default function Main() {
   return (
     <div className="app-layout">
       <header className="app-header">
-        <span className="header-logo">TUNE<span>PATH</span></span>
+        <span className="header-logo">WAVE<span>SET</span></span>
         <div className="header-right">
           {user && (
             <div className="header-user">
@@ -241,7 +242,7 @@ export default function Main() {
         >
           ARTIST
         </button>
-                {mode === 'artist' && (
+        {mode === 'artist' && (
           <button
             className="mode-tab tab-add"
             onClick={() => setAddOpen(true)}
@@ -250,6 +251,8 @@ export default function Main() {
             +
           </button>
         )}
+
+        <InstallButton />
       </div>
 
       {mode === 'mix' ? (

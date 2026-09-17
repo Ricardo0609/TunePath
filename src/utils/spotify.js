@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────
-// WAVESET — Spotify Web API Utilities
+// TUNEPATH — Spotify Web API Utilities
 // ─────────────────────────────────────────────
 //
 // Cambios de la API que este archivo maneja:
@@ -676,7 +676,32 @@ async function getArtistFirstAlbums(artistId) {
  * proyecto real suele tener trayectoria repartida en el tiempo; las
  * granjas de contenido suben muchísimo material de golpe y luego nada.
  */
-const MIN_YEARS_SPAN = 1; // al menos dos años distintos de publicación
+const MIN_YEARS_SPAN = 1;   // al menos dos años distintos de publicación
+const MIN_TRACKS_ALBUM = 4; // un "álbum" de 1-2 temas suele ser relleno
+
+// Memoria de artistas ya sugeridos, para no repetirlos al volver a pulsar
+const DISCOVER_SEEN_KEY = 'ws_discover_seen';
+const DISCOVER_SEEN_MAX = 60;
+
+function _readDiscoverSeen() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(DISCOVER_SEEN_KEY)) || []);
+  } catch {
+    return new Set();
+  }
+}
+
+function _saveDiscoverSeen(ids) {
+  try {
+    const prev = JSON.parse(localStorage.getItem(DISCOVER_SEEN_KEY)) || [];
+    const next = [...ids, ...prev].slice(0, DISCOVER_SEEN_MAX);
+    localStorage.setItem(DISCOVER_SEEN_KEY, JSON.stringify(next));
+  } catch { /* noop */ }
+}
+
+export function clearDiscoverSeen() {
+  try { localStorage.removeItem(DISCOVER_SEEN_KEY); } catch { /* noop */ }
+}
 
 function looksLikeRealArtist(artist, albums) {
   if (!albums || albums.length < MIN_ALBUMS) return false;
@@ -691,6 +716,13 @@ function looksLikeRealArtist(artist, albums) {
   const span = Math.max(...years) - Math.min(...years);
   if (span < MIN_YEARS_SPAN) return false;
 
+  // Años distintos reales (no varios discos del mismo mes)
+  if (new Set(years).size < 2) return false;
+
+  // Álbumes con muy pocos temas suelen ser relleno de catálogo
+  const conContenido = albums.filter(a => (a.total_tracks || 0) >= MIN_TRACKS_ALBUM);
+  if (conContenido.length < MIN_ALBUMS) return false;
+
   // Nombres sospechosos de auto-generación
   const name = (artist.name || '').trim();
   if (!name) return false;
@@ -701,12 +733,13 @@ function looksLikeRealArtist(artist, albums) {
   return true;
 }
 
-export async function getDiscoverArtists(seedArtists, limit = 5) {
+// Tope de peticiones de validación por pulsación (1 por candidato).
+// Evita que una búsqueda exigente dispare decenas de llamadas.
+const MAX_CHECKS = 20;
+
+export async function getDiscoverArtists(seedArtists, limit = 6) {
   let genres = getGenreProfile();
 
-  // Si aún no hay perfil, se deduce. Se intenta con varios artistas por
-  // si el primero no arroja ningún género (si no, quedaría marcado como
-  // analizado y el perfil nunca se llenaría).
   let intentos = 0;
   while (!genres.length && intentos < 3) {
     const antes = getGenreProfile().length;
@@ -720,73 +753,85 @@ export async function getDiscoverArtists(seedArtists, limit = 5) {
   if (!genres.length) return [];
 
   const seedIds = new Set(seedArtists.map(a => a.id));
-  const sampled = pickRandom(genres, Math.min(2, genres.length));
+  const yaVistos = _readDiscoverSeen();
 
-  // Búsqueda de álbumes poco conocidos en tus géneros
-  // IMPORTANTE: `genre:"X" tag:hipster` devuelve 0 resultados (verificado).
-  // El filtro genre: no se puede combinar con tag:, así que el género va
-  // como texto libre junto al tag.
-  // OJO: NO se usa `tag:hipster`. Ese filtro devuelve el 10% menos
-  // popular del catálogo, que es precisamente donde se concentra el
-  // contenido generado masivamente con IA. Sesgaba los resultados justo
-  // hacia lo que queremos evitar.
-  const queries = sampled.flatMap(g => [
-    `tag:new ${g}`,
-    `${g}`,
-  ]);
-
-  const candidates = new Map(); // artistId -> artist resumido
-
-  for (let i = 0; i < queries.length; i++) {
-    try {
-      const q = queries[i];
-      const items = await _cached(`discAlbum:${q}`, async () => {
-        const r = await api(`/search?q=${encodeURIComponent(q)}&type=album&limit=${SEARCH_LIMIT_MAX}`);
-        return r.albums?.items || [];
-      });
-
-      for (const al of items) {
-        // Fuera recopilatorios: no representan a una banda concreta
-        if (al.album_type === 'compilation') continue;
-        if (al.artists?.length > 1) continue;
-
-        const a = al.artists?.[0];
-        if (!a?.id || seedIds.has(a.id) || candidates.has(a.id)) continue;
-
-        const n = a.name.toLowerCase();
-        if (n.includes('varios artistas') || n.includes('various artists')) continue;
-
-        candidates.set(a.id, a);
-      }
-    } catch {
-      // una búsqueda fallida no rompe el resto
-    }
-    if (candidates.size >= limit * 3) break;
-    if (i < queries.length - 1) await sleep(250);
-  }
-
-  if (!candidates.size) return [];
-
-  // Validamos trayectoria (>= MIN_ALBUMS) y tomamos su mejor álbum
-  const shortlist = pickRandom([...candidates.values()], Math.min(limit * 2, candidates.size));
   const out = [];
+  const revisados = new Set();
+  let checks = 0;
+  let ronda = 0;
 
-  for (let i = 0; i < shortlist.length && out.length < limit; i++) {
-    const artist = shortlist[i];
-    try {
-      const albums = await getArtistFirstAlbums(artist.id);
-      if (looksLikeRealArtist(artist, albums)) {
-        const best = [...albums].sort(
-          (a, b) => new Date(b.release_date) - new Date(a.release_date)
-        )[0];
-        out.push({ artist, album: best, albumCount: albums.length });
+  // Se insiste con nuevas páginas hasta llenar el cupo o agotar el tope.
+  // Antes se probaba un solo lote y, con el filtro estricto, salía 1 sola
+  // banda; ahora se sigue buscando hasta reunir las que pediste.
+  while (out.length < limit && checks < MAX_CHECKS && ronda < 6) {
+    const sampled = pickRandom(genres, Math.min(2, genres.length));
+    const offsetBase = Math.floor(Math.random() * 60);
+
+    const queries = sampled.flatMap(g => [`tag:new ${g}`, `${g}`]);
+    const candidates = new Map();
+
+    for (let i = 0; i < queries.length; i++) {
+      try {
+        const q = queries[i];
+        const off = offsetBase + i * 5 + ronda * 10;
+        const items = await _cached(`discAlbum:${q}:${off}`, async () => {
+          const r = await api(
+            `/search?q=${encodeURIComponent(q)}&type=album&limit=${SEARCH_LIMIT_MAX}&offset=${off}`
+          );
+          return r.albums?.items || [];
+        });
+
+        for (const al of items) {
+          if (al.album_type === 'compilation') continue;
+          if (al.artists?.length > 1) continue;
+
+          const a = al.artists?.[0];
+          if (!a?.id) continue;
+          if (seedIds.has(a.id) || yaVistos.has(a.id)) continue;
+          if (revisados.has(a.id) || candidates.has(a.id)) continue;
+
+          const n = a.name.toLowerCase();
+          if (n.includes('varios artistas') || n.includes('various artists')) continue;
+
+          candidates.set(a.id, a);
+        }
+      } catch {
+        // una búsqueda fallida no rompe el resto
       }
-    } catch {
-      // si falla, lo omitimos
+      if (i < queries.length - 1) await sleep(220);
     }
-    if (i < shortlist.length - 1 && out.length < limit) await sleep(250);
+
+    if (!candidates.size) {
+      ronda++;
+      continue;
+    }
+
+    // Validar trayectoria: 1 petición por candidato
+    const lista = pickRandom([...candidates.values()], candidates.size);
+
+    for (const artist of lista) {
+      if (out.length >= limit || checks >= MAX_CHECKS) break;
+      revisados.add(artist.id);
+      checks++;
+
+      try {
+        const albums = await getArtistFirstAlbums(artist.id);
+        if (looksLikeRealArtist(artist, albums)) {
+          const best = [...albums].sort(
+            (a, b) => new Date(b.release_date) - new Date(a.release_date)
+          )[0];
+          out.push({ artist, album: best, albumCount: albums.length });
+        }
+      } catch {
+        // si falla, lo omitimos
+      }
+      await sleep(220);
+    }
+
+    ronda++;
   }
 
+  _saveDiscoverSeen(out.map(o => o.artist.id));
   return out;
 }
 
@@ -797,8 +842,8 @@ export async function createSpotifyPlaylist(tracks, name) {
   const playlist = await api('/me/playlists', {
     method: 'POST',
     body: JSON.stringify({
-      name: name || 'Waveset Mix 🎵',
-      description: `Auto-generated by Waveset on ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
+      name: name || 'TunePath Mix 🎵',
+      description: `Generada con TunePath el ${new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`,
       public: false,
     }),
   });
@@ -852,7 +897,7 @@ export function generatePlaylistName(artists) {
     second ? `${first} × ${second}` : `${first}'s World`,
     'Curated Chaos',
     'Deep Cuts Only',
-    'Waveset Generated',
+    'TunePath Generated',
   ];
 
   return options[Math.floor(Math.random() * options.length)];
